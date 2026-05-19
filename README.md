@@ -1,11 +1,38 @@
-<div align="center">
+# Apex Strategic Holdings - Edge Deployment
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+## Tech Stack
+- **Frontend**: Vite + React 18 + Tailwind CSS V4
+- **Backend**: Cloudflare Workers (Edge Runtime)
+- **Data Store**: Cloudflare KV
+- **Notifications**: Discord Webhooks
 
-  <h1>Built with AI Studio</h2>
+## KV Schema
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+### Key: `lot:<lotId>`
+```json
+{
+  "currentPrice": 142400,
+  "startPrice": 110000,
+  "ceilingPrice": 215000,
+  "velocity": true,
+  "status": "Active",
+  "adminInvoiceStatus": "Pending",
+  "bidHistory": [
+    { "id": "uuid", "user": "string", "amount": 142400, "time": "ISO-8601" }
+  ]
+}
+```
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+### Key: `config:admin`
+```json
+{
+  "user": "csapex",
+  "pass": "031295$$01kilox"
+}
+```
 
-</div>
+## Deployment
+1. Run `npm run build`.
+2. Deploy to Cloudflare Pages.
+3. Configure KV Namespace: `APEX_KV`.
+4. Bind KV to the Worker/Pages environment.

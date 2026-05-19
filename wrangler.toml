@@ -1,0 +1,15 @@
+name = "apex-luxury-auction"
+main = "server.ts"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "APEX_KV"
+id = "prod_kv_id_here"
+
+[vars]
+DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1504875536982479008/m_GNr9NTjzW53XW6PfOtX9Hf0Cv2--SAdysZdGeWbrnp2r4E7T0bHbeNurIu08OXqnu8"
+
+[env.production]
+routes = [
+  { pattern = "apex.strategic-holdings.com", custom_domain = true }
+]

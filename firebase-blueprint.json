@@ -1,0 +1,43 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account and vetting status",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending", "Approved", "Denied"] },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["uid", "email", "name", "status"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System alerts or personal messages to users",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "alert", "invoice"] },
+        "read": { "type": "boolean" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["userId", "title", "message", "read", "timestamp"]
+    }
+  },
+  "firestore": {
+    "users": {
+       "schema": "User",
+       "description": "Global user registry"
+    },
+    "notifications": {
+       "schema": "Notification",
+       "description": "User-specific alerts"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "APEX HOLDINGS | Elite Automotive Auctions",
+  "description": "High-fidelity, premium vehicle auction platform featuring ultra-premium layouts, live bidding simulations, and secure entry vaults.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

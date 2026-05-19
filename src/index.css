@@ -1,0 +1,60 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --color-gold: #D4AF37;
+  --color-gold-dark: #B5962E;
+}
+
+@keyframes pulse-gold {
+  0% { text-shadow: 0 0 0px rgba(212, 175, 55, 0); }
+  50% { text-shadow: 0 0 20px rgba(212, 175, 55, 0.4); }
+  100% { text-shadow: 0 0 0px rgba(212, 175, 55, 0); }
+}
+
+@utility animate-price-pulse {
+  animation: pulse-gold 2s ease-in-out infinite;
+}
+
+@keyframes scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+@utility animate-scroll {
+  animation: scroll 20s linear infinite;
+  display: flex;
+  width: max-content;
+}
+
+@utility no-scrollbar {
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    @apply font-sans antialiased bg-[#050505] text-[#F0F0F0] selection:bg-white/20 selection:text-white;
+    overscroll-behavior-y: none;
+  }
+}
+
+@layer components {
+  .high-density-grid {
+    @apply grid border border-white/10 bg-[#080808];
+  }
+  .high-density-cell {
+    @apply p-6 border-white/5 transition-colors hover:bg-white/[0.02];
+  }
+}
