@@ -1,37 +1,58 @@
 import React from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Shield, Bell, Menu, X, Gavel } from "lucide-react";
+import { Menu, X, Bell, User, Search, ChevronDown, LogOut } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/src/lib/utils";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [isScrolled, setIsScrolled] = React.useState(false);
   const [user, setUser] = React.useState<any>(null);
-  const [notifications, setNotifications] = React.useState<any[]>([]);
   const [isNotifOpen, setIsNotifOpen] = React.useState(false);
+  const [isProfileOpen, setIsProfileOpen] = React.useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = React.useState(false);
+  const [isRegisterModalOpen, setIsRegisterModalOpen] = React.useState(false);
   const { pathname } = useLocation();
 
   React.useEffect(() => {
-    const handleScroll = () => setIsScrolled(window.scrollY > 50);
+    const handleScroll = () => setIsScrolled(window.scrollY > 20);
     window.addEventListener("scroll", handleScroll);
     
-    const checkUser = () => {
+    const checkUser = async () => {
       const savedUser = localStorage.getItem('apex_user');
-      if (savedUser) setUser(JSON.parse(savedUser));
+      if (savedUser) {
+        const parsed = JSON.parse(savedUser);
+        setUser(parsed);
+        if (parsed.email) {
+           try {
+             const res = await fetch('/api/user/profile', {
+               method: 'POST',
+               headers: { 'Content-Type': 'application/json' },
+               body: JSON.stringify({ email: parsed.email })
+             });
+             const data = await res.json();
+             if (res.ok && data.user) {
+               localStorage.setItem('apex_user', JSON.stringify(data.user));
+               setUser(data.user);
+             }
+           } catch {}
+        }
+      }
       else setUser(null);
     };
 
-    const handleOpenLogin = () => setIsLoginModalOpen(true);
+    const handleOpenLogin = () => { setIsRegisterModalOpen(false); setIsLoginModalOpen(true); };
+    const handleOpenRegister = () => { setIsLoginModalOpen(false); setIsRegisterModalOpen(true); };
 
     checkUser();
     window.addEventListener('storage', checkUser);
     window.addEventListener('apex-open-login', handleOpenLogin);
+    window.addEventListener('apex-open-register', handleOpenRegister);
     
     return () => {
       window.removeEventListener("scroll", handleScroll);
       window.removeEventListener('storage', checkUser);
       window.removeEventListener('apex-open-login', handleOpenLogin);
+      window.removeEventListener('apex-open-register', handleOpenRegister);
     };
   }, []);
 
@@ -42,205 +63,244 @@ export function Layout({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Top Navigation Bar - High Density Theme */}
+    <div className="min-h-screen flex flex-col font-sans">
+      {/* Top utility bar */}
+      <div className="bg-slate-900 text-slate-300 text-xs py-2 hidden md:block border-b border-slate-800">
+         <div className="max-w-[1600px] mx-auto px-6 flex justify-between items-center">
+            <div className="flex gap-6">
+               <a href="#" className="hover:text-white transition-colors">How it works</a>
+               <a href="#" className="hover:text-white transition-colors">Locations</a>
+               <a href="#" className="hover:text-white transition-colors">Support</a>
+            </div>
+            <div className="flex gap-4 items-center">
+               <span className="flex items-center gap-1 cursor-pointer hover:text-white">EN <ChevronDown className="w-3 h-3"/></span>
+               <span className="flex items-center gap-1 cursor-pointer hover:text-white">USD <ChevronDown className="w-3 h-3"/></span>
+            </div>
+         </div>
+      </div>
+
       <header 
         className={cn(
-          "h-16 fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 md:px-12 bg-[#0A0A0A] border-b transition-all duration-300",
-          isScrolled ? "border-white/10 shadow-2xl" : "border-transparent"
+          "sticky top-0 z-50 transition-all duration-300",
+          isScrolled ? "glass-panel shadow-sm" : "bg-white border-b border-slate-200"
         )}
       >
-        <div className="flex items-center space-x-4 md:space-x-12">
-          <Link to="/" className="flex items-center group">
-             <span className="text-lg md:text-xl font-bold tracking-[0.2em] uppercase">APEX<span className="text-white/40">HOLDINGS</span></span>
-          </Link>
-          <nav className="hidden lg:flex space-x-8 text-[10px] uppercase tracking-[0.2em] font-bold text-white/50">
-            <Link to="/" className={cn("transition-colors", pathname === '/' ? 'text-white' : 'hover:text-white')}>Market</Link>
-            <Link to="/inventory" className={cn("transition-colors", pathname === '/inventory' ? 'text-white' : 'hover:text-white')}>Inventory</Link>
-            <Link to="/sell" className={cn("transition-colors", pathname === '/sell' ? 'text-white' : 'hover:text-white')}>Sell Asset</Link>
-            <Link to="/vault" className={cn("transition-colors", pathname === '/vault' ? 'text-white' : 'hover:text-white')}>The Vault</Link>
-          </nav>
-        </div>
-        
-        <div className="flex items-center space-x-4">
-          <div className="hidden md:flex items-center bg-white/5 border border-white/10 px-3 py-1.5 rounded-full">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 mr-2 shadow-[0_0_8px_rgba(16,185,129,0.6)]"></div>
-            <span className="text-[9px] font-mono uppercase tracking-tighter text-white/60">Node Integrity: Nominal</span>
+        <div className="max-w-[1600px] mx-auto px-6 h-16 md:h-20 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-8 lg:gap-12 flex-shrink-0">
+            <Link to="/" className="flex items-center gap-2">
+               <div className="w-8 h-8 rounded-lg bg-blue-700 flex items-center justify-center shadow-md shadow-blue-700/20">
+                 <span className="text-white font-display font-bold text-lg leading-none">B</span>
+               </div>
+               <span className="text-2xl font-display font-bold tracking-tight text-slate-900">
+                  Bid.Cars <span className="font-light text-slate-400">Pro</span>
+               </span>
+            </Link>
+            
+            <nav className="hidden lg:flex items-center gap-8 text-sm font-semibold text-slate-600">
+              <Link to="/" className={cn("hover:text-blue-600 transition-colors", pathname === '/' && "text-blue-700 font-bold")}>Auctions</Link>
+              <Link to="/inventory" className={cn("hover:text-blue-600 transition-colors", pathname === '/inventory' && "text-blue-700 font-bold")}>Vehicle Finder</Link>
+              <Link to="/sell" className={cn("hover:text-blue-600 transition-colors", pathname === '/sell' && "text-blue-700 font-bold")}>Sell Vehicle</Link>
+              {user && <Link to="/dashboard" className={cn("hover:text-blue-600 transition-colors", pathname.includes('/dashboard') && "text-blue-700 font-bold")}>Dashboard</Link>}
+            </nav>
+          </div>
+
+          <div className="hidden md:flex items-center gap-4 flex-1 justify-end">
+             <div className="relative group max-w-sm w-full xl:max-w-md hidden lg:block">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input type="text" placeholder="Search Make, Model, Year, or VIN" className="w-full pl-9 pr-4 py-2.5 bg-slate-100 hover:bg-slate-200/50 border-transparent focus:bg-white border focus:border-blue-500 rounded-lg text-sm transition-all focus:outline-none focus:ring-4 focus:ring-blue-500/10" />
+             </div>
+
+             {user ? (
+               <div className="flex items-center gap-3 ml-4 pl-4 border-l border-slate-200">
+                  <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="relative p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors">
+                     <Bell className="w-5 h-5" />
+                     <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
+                  </button>
+                  <div className="relative">
+                    <button onClick={() => setIsProfileOpen(!isProfileOpen)} className="flex items-center gap-2 p-1.5 pr-3 hover:bg-slate-50 rounded-full transition-colors border border-transparent hover:border-slate-200">
+                       <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-xs">
+                          {user.name ? user.name.substring(0,2).toUpperCase() : 'US'}
+                       </div>
+                       <div className="hidden xl:flex flex-col items-start px-1 text-left">
+                          <span className="text-xs font-bold leading-none text-slate-900 mb-1">{user.name || 'Bidder Profile'}</span>
+                          <span className="text-[10px] text-slate-500 font-mono leading-none font-medium">Balance: ${(user.deposit_balance || 0).toLocaleString()}</span>
+                       </div>
+                       <ChevronDown className="w-4 h-4 text-slate-400 hidden xl:block" />
+                    </button>
+                    {isProfileOpen && (
+                       <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.1)] py-2 z-50 text-sm overflow-hidden animate-slide-up">
+                          <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/50">
+                            <p className="font-semibold text-slate-900 text-sm truncate">{user.name}</p>
+                            <p className="text-xs text-slate-500 truncate">{user.email}</p>
+                          </div>
+                          <div className="py-2">
+                             <Link to="/dashboard" onClick={() => setIsProfileOpen(false)} className="px-5 py-2.5 hover:bg-slate-50 flex items-center gap-3 text-slate-700 font-medium transition-colors">
+                               <User className="w-4 h-4 text-slate-400" /> Buyer Dashboard
+                             </Link>
+                          </div>
+                          <div className="border-t border-slate-100 py-2">
+                             <button onClick={handleLogout} className="w-full text-left px-5 py-2.5 hover:bg-red-50 text-red-600 flex items-center gap-3 font-medium transition-colors">
+                                <LogOut className="w-4 h-4" /> Sign Out
+                             </button>
+                          </div>
+                       </div>
+                    )}
+                  </div>
+               </div>
+             ) : (
+               <div className="flex items-center gap-3 ml-2 pl-4 border-l border-slate-200">
+                  <button onClick={() => window.dispatchEvent(new Event('apex-open-login'))} className="text-sm font-semibold text-slate-600 hover:text-blue-700 px-3 py-2 transition-colors">Sign In</button>
+                  <button onClick={() => window.dispatchEvent(new Event('apex-open-register'))} className="enterprise-button enterprise-button-primary py-2 px-5 text-sm">Register Now</button>
+               </div>
+             )}
           </div>
           
-          {user ? (
-            <div className="flex items-center space-x-4">
-               <button 
-                onClick={() => setIsNotifOpen(!isNotifOpen)}
-                className="relative p-2 text-white/40 hover:text-white transition-colors"
-               >
-                 <Bell className="w-5 h-5" />
-                 {notifications.some(n => !n.read) && (
-                   <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-[#0A0A0A]" />
-                 )}
-               </button>
-               <button 
-                 onClick={handleLogout}
-                 className="bg-white/5 border border-white/10 text-white px-5 py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-white hover:text-black transition-all"
-               >
-                 Disconnect
-               </button>
-            </div>
-          ) : (
-            <div className="flex items-center space-x-4">
-              <button 
-                onClick={() => setIsLoginModalOpen(true)}
-                className="text-white bg-white/5 border border-white/10 px-5 py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-white hover:text-black transition-all"
-              >
-                Sign In
-              </button>
-            </div>
-          )}
-
-          <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
-
-          {/* Notification Panel */}
-          <AnimatePresence>
-            {isNotifOpen && (
-              <motion.div 
-                initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                className="absolute top-20 right-6 md:right-12 w-80 bg-[#0A0A0A] border border-white/10 shadow-2xl p-6 z-[60]"
-              >
-                <div className="flex justify-between items-center mb-6">
-                   <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40">Inbound Packets</h4>
-                   <button onClick={() => setIsNotifOpen(false)} className="text-[8px] uppercase tracking-widest text-white/20">[X]</button>
-                </div>
-                <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2">
-                   {notifications.length > 0 ? notifications.map(n => (
-                     <div key={n.id} className="p-4 bg-white/5 border border-white/5 space-y-2 group">
-                        <div className="flex justify-between items-start">
-                          <span className="text-[8px] font-bold uppercase text-emerald-500 tracking-widest">{n.type}</span>
-                          <span className="text-[7px] font-mono text-white/20">{new Date(n.timestamp).toLocaleTimeString()}</span>
-                        </div>
-                        <h5 className="text-xs font-bold uppercase tracking-tight italic">{n.title}</h5>
-                        <p className="text-[10px] text-white/40 leading-relaxed">{n.message}</p>
-                     </div>
-                   )) : (
-                     <div className="py-12 text-center text-[9px] uppercase tracking-widest text-white/10 italic">Terminal Silent</div>
-                   )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Mobile Menu Trigger */}
           <MobileNav pathname={pathname} user={user} handleLogout={handleLogout} />
         </div>
       </header>
 
-      <main className="flex-1 pt-16">
+      <main className="flex-1 bg-slate-50 relative z-0">
         <AnimatePresence mode="wait">
           <motion.div
             key={pathname}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.4 }}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.3 }}
           >
             {children}
           </motion.div>
         </AnimatePresence>
       </main>
 
-      {/* System Footer - High Density Theme */}
-      <footer className="py-6 md:h-12 border-t border-white/10 flex flex-col md:flex-row items-center justify-between px-6 md:px-12 bg-[#050505] text-[9px] text-white/40 tracking-[0.2em] md:tracking-widest uppercase gap-4 text-center md:text-left">
-        <div>© 2026 APEX STRATEGIC HOLDINGS • ALL ASSETS SECURED</div>
-        <div className="flex items-center space-x-4 md:space-x-6">
-          <span className="flex items-center"><div className="w-1 h-1 bg-white/40 rounded-full mr-2"></div> Node: Secure</span>
-          <span className="flex items-center"><div className="w-1 h-1 bg-white/40 rounded-full mr-2"></div> Pulse v4.2</span>
+      <footer className="bg-slate-900 text-slate-400 pt-20 pb-10 border-t border-slate-800 mt-auto relative overflow-hidden">
+        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-blue-900 to-transparent opacity-50"></div>
+        <div className="max-w-[1600px] mx-auto px-6 relative z-10">
+           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12 mb-16">
+              <div className="lg:col-span-2">
+                 <Link to="/" className="flex items-center gap-2 mb-6">
+                   <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+                     <span className="text-white font-display font-bold text-lg">B</span>
+                   </div>
+                   <span className="text-2xl font-display font-bold tracking-tight text-white">Bid.Cars <span className="font-light text-slate-500">Pro</span></span>
+                 </Link>
+                 <p className="text-sm text-slate-400 leading-relaxed max-w-sm mb-8 font-medium">
+                   The premier enterprise vehicle marketplace for wholesale, salvage, and clean title vehicles globally. Exclusive access to premium inventory.
+                 </p>
+                 <div className="flex gap-3">
+                    <div className="w-10 h-10 rounded-full bg-slate-800 flex justify-center items-center hover:bg-blue-600 hover:text-white cursor-pointer transition-colors text-xs font-bold shadow-inner border border-slate-700">IN</div>
+                    <div className="w-10 h-10 rounded-full bg-slate-800 flex justify-center items-center hover:bg-blue-600 hover:text-white cursor-pointer transition-colors text-xs font-bold shadow-inner border border-slate-700">X</div>
+                    <div className="w-10 h-10 rounded-full bg-slate-800 flex justify-center items-center hover:bg-blue-600 hover:text-white cursor-pointer transition-colors text-xs font-bold shadow-inner border border-slate-700">FB</div>
+                 </div>
+              </div>
+              
+              <div>
+                <h4 className="text-white font-semibold mb-6 tracking-wide">Marketplace</h4>
+                <ul className="space-y-3 text-sm font-medium">
+                   <li><Link to="/inventory" className="hover:text-blue-400 transition-colors">Search Vehicles</Link></li>
+                   <li><Link to="/" className="hover:text-blue-400 transition-colors">Live Auctions</Link></li>
+                   <li><Link to="/sell" className="hover:text-blue-400 transition-colors">Sell a Vehicle</Link></li>
+                   <li><Link to="/locations" className="hover:text-blue-400 transition-colors">Locations & Facilities</Link></li>
+                </ul>
+              </div>
+
+              <div>
+                <h4 className="text-white font-semibold mb-6 tracking-wide">Support</h4>
+                <ul className="space-y-3 text-sm font-medium">
+                   <li><Link to="/help" className="hover:text-blue-400 transition-colors">Help Center</Link></li>
+                   <li><Link to="/how-to-buy" className="hover:text-blue-400 transition-colors">How to Buy</Link></li>
+                   <li><Link to="/shipping" className="hover:text-blue-400 transition-colors">Shipping & Delivery</Link></li>
+                   <li><Link to="/contact" className="hover:text-blue-400 transition-colors">Contact Us</Link></li>
+                </ul>
+              </div>
+
+              <div>
+                <h4 className="text-white font-semibold mb-6 tracking-wide">Corporate</h4>
+                <ul className="space-y-3 text-sm font-medium">
+                   <li><Link to="/about" className="hover:text-blue-400 transition-colors">About Us</Link></li>
+                   <li><Link to="/investors" className="hover:text-blue-400 transition-colors">Investor Relations</Link></li>
+                   <li><Link to="/careers" className="hover:text-blue-400 transition-colors">Careers</Link></li>
+                   <li><Link to="/press" className="hover:text-blue-400 transition-colors">Press</Link></li>
+                </ul>
+              </div>
+           </div>
+           
+           <div className="pt-8 border-t border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4 text-xs font-medium">
+              <div>© 2026 Bid.Cars Pro Enterprise. All rights reserved.</div>
+              <div className="flex gap-6">
+                 <Link to="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link>
+                 <Link to="/terms" className="hover:text-white transition-colors">Terms of Service</Link>
+                 <Link to="/cookie-policy" className="hover:text-white transition-colors">Cookie Policy</Link>
+              </div>
+           </div>
         </div>
       </footer>
+      <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
+      <RegisterModal isOpen={isRegisterModalOpen} onClose={() => setIsRegisterModalOpen(false)} />
     </div>
   );
 }
 
-function MobileNav({ pathname, user, handleLogout }: { pathname: string, user: any, handleLogout: () => void }) {
+import { createPortal } from "react-dom";
+
+function MobileNav({ pathname, user, handleLogout }: any) {
   const [isOpen, setIsOpen] = React.useState(false);
 
   return (
-    <div className="lg:hidden">
-      <button 
-        onClick={() => setIsOpen(true)}
-        className="w-10 h-10 border border-white/10 flex items-center justify-center text-white/40 hover:text-white transition-colors"
-      >
-        <Menu className="w-5 h-5" />
+    <div className="md:hidden">
+      <button onClick={() => setIsOpen(true)} className="p-2 text-slate-600 hover:text-slate-900 transition-colors">
+        <Menu className="w-6 h-6" />
       </button>
 
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-2xl"
-          >
-            <div className="flex flex-col h-full p-8">
-              <div className="flex justify-between items-center mb-16">
-                <Shield className="w-8 h-8" />
-                <button 
-                  onClick={() => setIsOpen(false)}
-                  className="w-10 h-10 border border-white/10 flex items-center justify-center text-white/40"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <nav className="flex flex-col gap-8">
-                {[
-                  { name: "Market Live", path: "/" },
-                  { name: "Inventory", path: "/inventory" },
-                  { name: "Commissioning", path: "/sell" },
-                  { name: "The Vault", path: "/vault" }
-                ].map((item) => (
-                  <Link 
-                    key={item.path}
-                    to={item.path}
-                    onClick={() => setIsOpen(false)}
-                    className={cn(
-                      "text-4xl font-bold uppercase tracking-tighter italic transition-colors",
-                      pathname === item.path ? "text-white" : "text-white/20 whitespace-nowrap"
+      {createPortal(
+        <AnimatePresence>
+          {isOpen && (
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm"
+            >
+              <motion.div 
+                 initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
+                 transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                 className="ml-auto w-[85%] max-w-sm h-full bg-white shadow-2xl flex flex-col"
+              >
+                 <div className="h-16 flex items-center justify-between px-6 border-b border-slate-100">
+                    <span className="font-display font-bold text-slate-900 text-lg">Menu</span>
+                    <button onClick={() => setIsOpen(false)} className="p-2 text-slate-500 rounded-full hover:bg-slate-100 transition-colors"><X className="w-5 h-5"/></button>
+                 </div>
+                 <div className="p-6 flex-1 overflow-y-auto flex flex-col gap-8">
+                    <div className="flex flex-col gap-2 text-base font-semibold text-slate-700">
+                       <Link to="/" onClick={() => setIsOpen(false)} className="py-3 px-4 rounded-lg hover:bg-slate-50 active:bg-slate-100 transition-colors">Auctions</Link>
+                       <Link to="/inventory" onClick={() => setIsOpen(false)} className="py-3 px-4 rounded-lg hover:bg-slate-50 active:bg-slate-100 transition-colors">Vehicle Finder</Link>
+                       <Link to="/sell" onClick={() => setIsOpen(false)} className="py-3 px-4 rounded-lg hover:bg-slate-50 active:bg-slate-100 transition-colors">Sell Vehicle</Link>
+                    </div>
+                    
+                    {user ? (
+                       <div className="mt-auto space-y-3">
+                          <Link to="/dashboard" onClick={() => setIsOpen(false)} className="block w-full py-3.5 bg-slate-100 text-center rounded-xl font-bold text-slate-900 border border-slate-200">
+                             My Dashboard
+                          </Link>
+                          <button onClick={() => { handleLogout(); setIsOpen(false); }} className="w-full py-3.5 text-red-600 font-bold border border-red-200 bg-red-50 hover:bg-red-100 rounded-xl transition-colors">
+                             Sign Out
+                          </button>
+                       </div>
+                    ) : (
+                       <div className="mt-auto space-y-3">
+                          <button onClick={() => { window.dispatchEvent(new Event('apex-open-login')); setIsOpen(false);}} className="w-full py-3.5 bg-slate-100 hover:bg-slate-200 text-center rounded-xl font-bold text-slate-900 border border-slate-200 transition-colors">
+                             Sign In
+                          </button>
+                          <button onClick={() => { window.dispatchEvent(new Event('apex-open-register')); setIsOpen(false);}} className="w-full py-3.5 text-white bg-blue-700 hover:bg-blue-800 font-bold rounded-xl shadow-md shadow-blue-700/20 transition-colors">
+                             Register Now
+                          </button>
+                       </div>
                     )}
-                  >
-                    {item.name}
-                  </Link>
-                ))}
-                {user && (
-                  <button 
-                    onClick={() => { handleLogout(); setIsOpen(false); }}
-                    className="text-4xl font-bold uppercase tracking-tighter italic text-red-500 text-left"
-                  >
-                    Disconnect
-                  </button>
-                )}
-              </nav>
-
-              <div className="mt-auto pt-12 border-t border-white/5 space-y-6">
-                 {user && (
-                   <div className="text-[10px] uppercase tracking-widest text-white/40 font-black">
-                     Auth_ID: {user.uid}
-                   </div>
-                 )}
-                <div className="flex items-center bg-white/5 border border-white/10 px-4 py-3 rounded-none justify-between">
-                  <div className="flex items-center">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500 mr-3 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse" />
-                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/60">Sovereign_Active</span>
-                  </div>
-                </div>
-                <div className="text-[8px] uppercase tracking-[0.4em] text-white/20 font-black">
-                  Apex Strategic Holdings • v4.2.pulse
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                 </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }
@@ -251,10 +311,13 @@ export function LoginModal({ isOpen, onClose }: { isOpen: boolean, onClose: () =
   const [error, setError] = React.useState("");
   const [loading, setLoading] = React.useState(false);
 
+  const [statusText, setStatusText] = React.useState("");
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setStatusText("Verifying account...");
 
     try {
       const res = await fetch("/api/login", {
@@ -265,62 +328,197 @@ export function LoginModal({ isOpen, onClose }: { isOpen: boolean, onClose: () =
       const data = await res.json();
 
       if (data.success) {
-        localStorage.setItem("apex_user", JSON.stringify(data.user));
-        window.dispatchEvent(new Event('storage'));
-        onClose();
+         setStatusText("Success! Redirecting...");
+         localStorage.setItem("apex_user", JSON.stringify(data.user));
+         window.dispatchEvent(new Event('storage'));
+         setTimeout(() => {
+           onClose();
+           if (data.user.role === 'admin') {
+             window.location.href = '/apex-control-nexus';
+           } else {
+             window.location.href = '/dashboard';
+           }
+         }, 800);
       } else {
-        setError(data.error || "Access Pulse Invalid");
+         if (data.error === "Your account is awaiting approval.") {
+           setError("Your account is awaiting admin approval");
+         } else if (data.error === "Your application has been rejected.") {
+           setError("Your account has been rejected");
+         } else {
+           setError(data.error);
+         }
+         setStatusText("");
       }
-    } catch (err) {
-      setError("System Network Fault");
+    } catch {
+       setError("System Network Fault");
+       setStatusText("");
     } finally {
-      setLoading(false);
+       setLoading(false);
     }
   };
 
   if (!isOpen) return null;
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/98 backdrop-blur-3xl">
-      <div className="w-full max-w-md relative">
-        <button onClick={onClose} className="absolute -top-12 right-0 text-white/20 hover:text-white text-[9px] uppercase tracking-widest">[X] CLOSE</button>
-        <div className="bg-[#0A0A0A] border border-white/10 p-8 md:p-12 space-y-10">
-          <div className="space-y-4">
-             <h3 className="text-3xl font-bold uppercase tracking-tighter italic">Institutional Ingress</h3>
-             <p className="text-[9px] uppercase tracking-[0.3em] text-white/20 font-black">Authentication required for ledger access.</p>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm shadow-xl">
+       <motion.div initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} className="w-full max-w-md bg-white rounded-2xl p-8 relative">
+          <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+          
+          <div className="flex flex-col items-center mb-6">
+             <div className="w-12 h-12 bg-blue-700 rounded-xl flex items-center justify-center shadow-lg shadow-blue-700/20 mb-4">
+               <span className="text-white font-display font-bold text-2xl">B</span>
+             </div>
+             <h3 className="text-2xl font-bold tracking-tight text-slate-900">Sign in to Bid.Cars</h3>
+             <p className="text-sm text-slate-500 font-medium mt-1">Enter your details to access live bidding</p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-6">
-            <div className="space-y-2">
-              <label className="text-[8px] uppercase tracking-[0.4em] text-white/20 ml-1">Node Identity</label>
-              <input 
-                type="email" 
-                value={email} 
-                onChange={e => setEmail(e.target.value)} 
-                required 
-                className="w-full bg-black border border-white/10 p-4 text-xs font-mono uppercase tracking-widest outline-none focus:border-white/40"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[8px] uppercase tracking-[0.4em] text-white/20 ml-1">Access Pulse</label>
-              <input 
-                type="password" 
-                value={password} 
-                onChange={e => setPassword(e.target.value)} 
-                required 
-                className="w-full bg-black border border-white/10 p-4 text-xs font-mono tracking-widest outline-none focus:border-white/40"
-              />
-            </div>
-            {error && <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 text-[8px] uppercase tracking-widest font-black text-center italic">{error}</div>}
-            <button 
-              disabled={loading}
-              className="w-full py-6 bg-white text-black text-[10px] font-black uppercase tracking-[0.6em] hover:bg-neutral-200 transition-all disabled:opacity-50"
-            >
-              {loading ? "AUTHENTICATING..." : "Establish Link"}
-            </button>
+          <form onSubmit={handleLogin} className="space-y-4">
+             <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Email Address</label>
+                <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="enterprise-input bg-slate-50" placeholder="name@company.com" />
+             </div>
+             <div className="space-y-1">
+                <div className="flex justify-between items-center">
+                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Password</label>
+                   <button type="button" className="text-xs font-bold text-blue-600 hover:underline">Forgot?</button>
+                </div>
+                <input required type="password" value={password} onChange={e => setPassword(e.target.value)} className="enterprise-input bg-slate-50" placeholder="••••••••" />
+             </div>
+             
+             {error && <div className="p-3 bg-red-50 border border-red-100 text-red-600 text-sm font-semibold rounded-lg text-center">{error}</div>}
+             
+             <button disabled={loading} className="w-full enterprise-button enterprise-button-primary disabled:opacity-50 mt-2 py-3.5 shadow-md">
+               {statusText || "Sign In"}
+             </button>
+             
+             <div className="text-center pt-2">
+                <span className="text-sm font-medium text-slate-500">Not registered? </span>
+                <button type="button" onClick={() => { onClose(); window.dispatchEvent(new Event('apex-open-register')) }} className="text-sm font-bold text-blue-700 hover:underline">Create Account</button>
+             </div>
           </form>
-        </div>
-      </div>
+       </motion.div>
+    </motion.div>
+  );
+}
+
+export function RegisterModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
+  const [email, setEmail] = React.useState("");
+  const [fullname, setFullname] = React.useState("");
+  const [phone, setPhone] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [confirmPassword, setConfirmPassword] = React.useState("");
+  const [country, setCountry] = React.useState("");
+  
+  const [error, setError] = React.useState("");
+  const [success, setSuccess] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password !== confirmPassword) {
+       setError("Passwords do not match");
+       return;
+    }
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const res = await fetch("/api/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, name: fullname, phone, password, country })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+         setSuccess(data.message || "Registration successful. Awaiting approval.");
+         // Clear form
+         setFullname("");
+         setEmail("");
+         setPhone("");
+         setPassword("");
+         setConfirmPassword("");
+         setCountry("");
+         
+         setTimeout(() => { 
+            onClose(); 
+            window.dispatchEvent(new Event('apex-open-login'));
+         }, 3000);
+      } else {
+         setError(data.error || "Registration failed");
+      }
+    } catch (err) {
+       setError("System Network Fault. Please try again.");
+    } finally {
+       setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm shadow-xl">
+       <motion.div initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} className="w-full max-w-md bg-white rounded-2xl p-8 relative max-h-[90vh] overflow-y-auto">
+          <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+          
+          <div className="flex flex-col items-center mb-6">
+             <div className="w-12 h-12 bg-blue-700 rounded-xl flex items-center justify-center shadow-lg shadow-blue-700/20 mb-4">
+               <span className="text-white font-display font-bold text-2xl">B</span>
+             </div>
+             <h3 className="text-2xl font-bold tracking-tight text-slate-900">Create an Account</h3>
+             <p className="text-sm text-slate-500 font-medium mt-1">Register to start bidding</p>
+          </div>
+
+          {!success ? (
+             <form onSubmit={handleRegister} className="space-y-4">
+                <div className="space-y-1">
+                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Full Name</label>
+                   <input required type="text" value={fullname} onChange={e => setFullname(e.target.value)} className="enterprise-input bg-slate-50" placeholder="John Doe" />
+                </div>
+                <div className="space-y-1">
+                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Email Address</label>
+                   <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="enterprise-input bg-slate-50" placeholder="name@company.com" />
+                </div>
+                <div className="space-y-1">
+                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Phone Number</label>
+                   <input required type="text" value={phone} onChange={e => setPhone(e.target.value)} className="enterprise-input bg-slate-50" placeholder="+1 (555) 000-0000" />
+                </div>
+                <div className="space-y-1">
+                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Country</label>
+                   <input required type="text" value={country} onChange={e => setCountry(e.target.value)} className="enterprise-input bg-slate-50" placeholder="United States" />
+                </div>
+                <div className="space-y-1">
+                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Password</label>
+                   <input required minLength={8} type="password" value={password} onChange={e => setPassword(e.target.value)} className="enterprise-input bg-slate-50" placeholder="••••••••" />
+                </div>
+                <div className="space-y-1">
+                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Confirm Password</label>
+                   <input required minLength={8} type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="enterprise-input bg-slate-50" placeholder="••••••••" />
+                </div>
+                
+                {error && <div className="p-3 bg-red-50 border border-red-100 text-red-600 text-sm font-semibold rounded-lg text-center">{error}</div>}
+                
+                <button disabled={loading} className="w-full enterprise-button enterprise-button-primary disabled:opacity-50 mt-2 py-3.5 shadow-md">
+                  {loading ? "Creating account..." : "Register Now"}
+                </button>
+                
+                <div className="text-center pt-2">
+                   <span className="text-sm font-medium text-slate-500">Already registered? </span>
+                   <button type="button" onClick={() => { onClose(); window.dispatchEvent(new Event('apex-open-login')) }} className="text-sm font-bold text-blue-700 hover:underline">Sign In</button>
+                </div>
+             </form>
+          ) : (
+             <div className="text-center space-y-4 py-8">
+                <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                   <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                </div>
+                <h4 className="text-xl font-bold text-slate-900">Registration successful</h4>
+                <p className="text-slate-500 font-medium">{success}</p>
+                <p className="text-sm text-slate-400">Redirecting to login...</p>
+             </div>
+          )}
+       </motion.div>
     </motion.div>
   );
 }

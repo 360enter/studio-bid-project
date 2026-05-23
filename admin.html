@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Apex God Mode Admin - Control Center</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    body {
+      padding: 3rem;
+      background-color: var(--bg-primary);
+    }
+    .header-panel {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-b: 1px solid var(--border-color);
+      padding-bottom: 2rem;
+      margin-bottom: 3rem;
+    }
+    .grid-dashboard {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 3rem;
+    }
+    @media (min-width: 1024px) {
+      .grid-dashboard {
+        grid-template-columns: 350px 1fr;
+      }
+    }
+    .inventory-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1.5rem;
+    }
+  </style>
+</head>
+<body>
+  
+  <div class="header-panel">
+    <div>
+      <span class="mono text-gold" style="letter-spacing: 0.3em; uppercase">Institutional Procurement</span>
+      <h1 class="heading-hero" style="font-size: 3rem; margin-top: 0.5rem;">GOD MODE ENGINE</h1>
+    </div>
+    <button onclick="logoutSession()" class="mono" style="background: none; border: 1px solid var(--border-color); color: var(--text-secondary); padding: 0.75rem 1.5rem; cursor: pointer; text-transform: uppercase;">[X] De-Authorize</button>
+  </div>
+
+  <div class="grid-dashboard">
+    
+    <!-- LEFT SIDEBAR: BULK UPLOADER -->
+    <div style="display: flex; flex-direction: column; gap: 2rem;">
+      <div class="card-apex">
+        <h3 class="mono text-gold" style="margin-bottom: 1rem; text-transform: uppercase;">1. Bulk CSV Ingest</h3>
+        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1.5rem; line-height: 1.6;">
+          Drag and drop a raw `.csv` payload containing: <b>title, vin, lot, price, url</b> to index and instantly upsert entries.
+        </p>
+        
+        <div id="dropzone" class="dropzone" ondragover="dragOverHandler(event)" ondragleave="dragLeaveHandler(event)" ondrop="dropHandler(event)">
+          <svg style="width: 2.5rem; height: 2.5rem; color: var(--accent-gold); margin: 0 auto 1rem auto; display: block;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+          <span class="mono" style="font-size: 0.7rem; uppercase">DRAG CSV FILE TO INITIATE TUNNEL</span>
+        </div>
+        <div id="uploadStatus" class="mono text-gold" style="margin-top: 1rem; display: none; text-align: center;"></div>
+      </div>
+
+      <div class="card-apex">
+        <h3 class="mono text-gold" style="margin-bottom: 1rem; text-transform: uppercase;">Scraper Status</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding: 0.75rem 0;">
+          <span class="mono" style="color: var(--text-secondary)">Public Endpoint</span>
+          <span class="mono" style="color: var(--emerald-glowing)">bid.cars (Proxy Live)</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding: 0.75rem 0;">
+          <span class="mono" style="color: var(--text-secondary); ">Scheduler Interval</span>
+          <span class="mono">Daily Cron (0 0 * * *)</span>
+        </div>
+        <button onclick="triggerManualScrape()" class="button-primary" style="margin-top: 1.5rem; padding: 1rem; font-size: 0.65rem;">Force Scraper Pulsar</button>
+      </div>
+    </div>
+
+    <!-- RIGHT SECTION: INVENTORY DISPLAY & MANAGEMENT MODIFIERS -->
+    <div>
+      <h2 class="mono text-gold" style="margin-bottom: 1.5rem; uppercase">2. Active Showroom Nodes</h2>
+      <div id="lotsContainer" class="inventory-grid">
+        <!-- Dyn lots go here -->
+      </div>
+    </div>
+
+  </div>
+
+  <!-- MODAL: FOR MODIFYING SELECTABLE LOTS -->
+  <div id="editModal" style="display: none; position: fixed; inset: 0; background-color: rgba(5,5,5,0.98); backdrop-filter: blur(20px); z-index: 1000; align-items: center; justify-content: center; padding: 2rem;">
+    <div class="card-apex" style="width: 100%; max-width: 600px; margin: auto;">
+      <h3 id="modalTitle" class="mono text-gold" style="font-size: 1.25rem; margin-bottom: 2rem;">UPDATE ASSET SIGNALS</h3>
+      
+      <form id="editForm" onsubmit="saveOverrides(event)" style="display: flex; flex-direction: column; gap: 1.5rem;">
+        <input type="hidden" id="editLotId">
+        
+        <div>
+          <label class="mono" style="color: var(--text-secondary); display: block; margin-bottom: 0.5rem;">Price Overwrite ($)</label>
+          <input type="number" id="editPrice" class="input-premium" required>
+        </div>
+
+        <div>
+          <label class="mono" style="color: var(--text-secondary); display: block; margin-bottom: 0.5rem;">Organic Bid Velocity Mode</label>
+          <select id="editVelocity" class="input-premium" style="background-color: #000; color: #fff;">
+            <option value="Off">Off (Static)</option>
+            <option value="Low">Low Frequency</option>
+            <option value="Medium">Medium Frequency</option>
+            <option value="High">High Urgency</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="mono" style="color: var(--text-secondary); display: block; margin-bottom: 0.5rem;">Auction Operational State</label>
+          <select id="editStatus" class="input-premium" style="background-color: #000; color: #fff;">
+            <option value="Active">Operational / Active</option>
+            <option value="Closed">Closed</option>
+            <option value="Sold">Liquidated / Sold</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="mono" style="color: var(--text-secondary); display: block; margin-bottom: 0.5rem;">Append Multi-Image Registry URL</label>
+          <input type="text" id="appendImage" class="input-premium" placeholder="https://images.unsplash.com/photo-...">
+          <button type="button" onclick="executeImageAppend()" class="mono" style="margin-top: 0.5rem; background: rgba(255,255,255,0.1); border: none; color: white; padding: 0.5rem 1rem; width: 100%; text-transform: uppercase;">Add To Gallery</button>
+        </div>
+
+        <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+          <button type="submit" class="button-primary" style="flex: 1; padding: 1rem; font-size: 0.7rem;">Inject Overrides</button>
+          <button type="button" onclick="dispatchInvoiceNotifier()" class="mono text-gold" style="flex: 1; border: 1px solid var(--accent-gold); background: none; text-transform: uppercase; font-size: 0.65rem; font-weight: 700; cursor: pointer;">[!] Dispatch Invoice</button>
+          <button type="button" onclick="closeEditModal()" class="mono" style="flex: 0.5; border: 1px solid var(--border-color); background: none; color: var(--text-secondary); text-transform: uppercase; font-size: 0.65rem;">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    let activeLots = {};
+
+    async function loadShowroom() {
+      const res = await fetch("/api/lots");
+      if (res.ok) {
+        activeLots = await res.json();
+        const container = document.getElementById("lotsContainer");
+        container.innerHTML = "";
+        
+        Object.values(activeLots).forEach(lot => {
+          const card = document.createElement("div");
+          card.className = "card-apex";
+          card.style.display = "flex";
+          card.style.flexDirection = "column";
+          card.style.gap = "1rem";
+          card.innerHTML = `
+            <div style="aspect-ratio: 16/9; width: 100%; border: 1px solid var(--border-color); background: #000; overflow:hidden;">
+              <img src="${lot.image}" style="width: 100%; height: 100%; object-fit: cover;">
+            </div>
+            <div>
+              <span class="mono text-gold">${lot.lot} | VIN: ${lot.vin}</span>
+              <h4 class="mono" style="font-size: 1rem; margin: 0.5rem 0; font-weight: 700; uppercase">${lot.name}</h4>
+              <p class="mono" style="color: var(--emerald-glowing)">Bid: $${lot.currentBid.toLocaleString()}</p>
+              <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                <span class="mono" style="font-size: 0.65rem; background: rgba(255,255,255,0.05); padding: 0.2rem 0.5rem; border-radius: 2px;">V: ${lot.velocity}</span>
+                <span class="mono" style="font-size: 0.65rem; background: rgba(212,175,55,0.1); padding: 0.2rem 0.5rem; border-radius: 2px;">State: ${lot.status}</span>
+              </div>
+            </div>
+            <button onclick="openEditModal('${lot.id}')" class="button-primary" style="padding: 0.85rem; font-size: 0.65rem; margin-top: auto;">Open God Override</button>
+          `;
+          container.appendChild(card);
+        });
+      }
+    }
+
+    function openEditModal(lotId) {
+      const lot = activeLots[lotId];
+      if (!lot) return;
+      document.getElementById("editLotId").value = lot.id;
+      document.getElementById("editPrice").value = lot.currentBid;
+      document.getElementById("editVelocity").value = lot.velocity || "Off";
+      document.getElementById("editStatus").value = lot.status || "Active";
+      document.getElementById("modalTitle").textContent = `OVERRIDE: ${lot.name.toUpperCase()}`;
+      document.getElementById("editModal").style.display = "flex";
+    }
+
+    function closeEditModal() {
+      document.getElementById("editModal").style.display = "none";
+    }
+
+    async function saveOverrides(e) {
+      e.preventDefault();
+      const lotId = document.getElementById("editLotId").value;
+      const price = parseFloat(document.getElementById("editPrice").value);
+      const velocity = document.getElementById("editVelocity").value;
+      const status = document.getElementById("editStatus").value;
+
+      const res = await fetch(`/api/admin/lots/` + lotId, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ price, velocity, status })
+      });
+
+      if (res.ok) {
+        closeEditModal();
+        loadShowroom();
+      } else {
+        alert("Transmission to Core Node failed!");
+      }
+    }
+
+    async function executeImageAppend() {
+      const lotId = document.getElementById("editLotId").value;
+      const src = document.getElementById("appendImage").value.trim();
+      if (!src) return;
+
+      const res = await fetch(`/api/admin/lots/` + lotId, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appendImage: src })
+      });
+
+      if (res.ok) {
+        document.getElementById("appendImage").value = "";
+        alert("Image appended safely to showroom gallery!");
+      }
+    }
+
+    async function dispatchInvoiceNotifier() {
+      const lotId = document.getElementById("editLotId").value;
+      const res = await fetch(`/api/admin/lots/` + lotId, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ triggerInvoice: true })
+      });
+      if (res.ok) {
+        alert("Global Invoice dispatched to target profile state. Real-time ticker triggered.");
+        closeEditModal();
+        loadShowroom();
+      }
+    }
+
+    // Drag Drop handlers
+    function dragOverHandler(e) { e.preventDefault(); e.target.classList.add("hovering"); }
+    function dragLeaveHandler(e) { e.target.classList.remove("hovering"); }
+    async function dropHandler(e) {
+      e.preventDefault();
+      e.target.classList.remove("hovering");
+      const files = e.dataTransfer.files;
+      if (files.length === 0) return;
+      
+      const file = files[0];
+      if (!file.name.endsWith(".csv")) {
+        alert("Acceptable protocols restrict upload to raw .csv files only.");
+        return;
+      }
+
+      const text = await file.text();
+      const statusEl = document.getElementById("uploadStatus");
+      statusEl.style.display = "block";
+      statusEl.textContent = "DECRYPTING CSV SEQUENCE...";
+
+      const res = await fetch("/api/admin/bulk-upload", {
+        method: "POST",
+        headers: { "Content-Type": "text/csv" },
+        body: text
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        statusEl.textContent = "INGRESS COMPLETE: " + data.count + " STRATEGIC CARS LOADED!";
+        loadShowroom();
+      } else {
+        statusEl.textContent = "INGRESS FAULT - CORRUPTED TRANSACTION";
+      }
+    }
+
+    async function triggerManualScrape() {
+      alert("Manual Crawler Sequence launched towards bid.cars targets asynchronously.");
+    }
+
+    function logoutSession() {
+      document.cookie = "apex_session=; Max-Age=0; path=/;";
+      window.location.reload();
+    }
+
+    window.onload = loadShowroom;
+  </script>
+</body>
+</html>

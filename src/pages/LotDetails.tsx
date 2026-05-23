@@ -4,515 +4,590 @@ import { motion, AnimatePresence } from "motion/react";
 import { 
   Timer, Gavel, ShieldCheck, Info, History, 
   ChevronRight, ArrowLeft, Share2, Heart,
-  Zap, AlertCircle, CheckCircle
+  Zap, AlertCircle, CheckCircle, Scale, Car, FileText, ArrowUp, Search, X
 } from "lucide-react";
 import { cn, formatCurrency } from "@/src/lib/utils";
+
+function maskBidder(rawEmail: string | undefined | null) {
+  if (!rawEmail) return "BIDDER";
+  if (rawEmail.includes("@")) {
+    const [part1, part2] = rawEmail.split("@");
+    const maskedPart = part1.length > 2 
+      ? part1.slice(0, 2) + "***" + part1.slice(-1) 
+      : part1 + "***";
+    return `${maskedPart}@${part2}`;
+  }
+  return rawEmail;
+}
 
 export function LotDetails() {
   const { id } = useParams();
   const [currentImageIndex, setCurrentImageIndex] = React.useState(0);
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [isBiddingModalOpen, setIsBiddingModalOpen] = React.useState(false);
   const [bidValue, setBidValue] = React.useState("");
   const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [showInvoice, setShowInvoice] = React.useState(false);
   const [lotData, setLotData] = React.useState<any>(null);
+  const [loadError, setLoadError] = React.useState(false);
+  
+  const [user, setUser] = React.useState<any>(null);
+  const [escrowBalance, setEscrowBalance] = React.useState<number>(0);
 
   React.useEffect(() => {
+    const savedUser = localStorage.getItem('apex_user');
+    if (savedUser) {
+       const parsedUsr = JSON.parse(savedUser);
+       setUser(parsedUsr);
+       // Fetch accurate escrow wallet balance
+       fetch(`/api/escrow/wallet/${parsedUsr.id}`)
+         .then(res => res.json())
+         .then(data => {
+            if (data.success && data.wallet) {
+               setEscrowBalance(data.wallet.available_balance || 0);
+            }
+         }).catch(console.error);
+    }
+    
+    // Realtime Lot data fetching logic
     const fetchLot = async () => {
       try {
         const res = await fetch("/api/lots");
         const data = await res.json();
         if (id && data[id]) {
-          setLotData(data[id]);
+           setLotData(data[id]);
+           setLoadError(false);
+        } else {
+           setLoadError(true);
         }
       } catch (err) {
-        console.error("Fetch error:", err);
+         setLoadError(true);
       }
     };
     fetchLot();
-    const interval = setInterval(fetchLot, 3000);
-    return () => clearInterval(interval);
+
+    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${wsProtocol}//${window.location.host}`;
+    let socket: WebSocket | null = null;
+    let reconnectTimeout: any = null;
+
+    const connectWS = () => {
+      socket = new WebSocket(wsUrl);
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "init") {
+            if (id && data.lots[id]) setLotData(data.lots[id]);
+          } else if (data.type === "lot_update" && data.lotId === id) {
+            setLotData(data.lot);
+          } else if (data.type === "lot_delete" && data.lotId === id) {
+            setLotData(null);
+          }
+        } catch (err) {}
+      };
+      socket.onclose = () => { reconnectTimeout = setTimeout(connectWS, 3000); };
+    };
+    connectWS();
+    
+    return () => {
+      if (socket) { socket.onclose = null; socket.close(); }
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    };
   }, [id]);
 
   const [timeLeft, setTimeLeft] = React.useState({ h: "00", m: "00", s: "00", d: "00" });
+  const [isExpired, setIsExpired] = React.useState(false);
+  const [isExtendedTimer, setIsExtendedTimer] = React.useState(false);
 
   React.useEffect(() => {
+    if (!lotData?.expiresAt) return;
     const updateTimer = () => {
-      if (!lotData?.expiresAt) return;
       const now = new Date().getTime();
       const end = new Date(lotData.expiresAt).getTime();
       const diff = end - now;
-
       if (diff <= 0) {
+        setIsExpired(true);
         setTimeLeft({ h: "00", m: "00", s: "00", d: "00" });
         return;
       }
-
+      setIsExpired(false);
+      setIsExtendedTimer(diff < 60000);
       const d = Math.floor(diff / (1000 * 60 * 60 * 24));
       const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
       const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
       const s = Math.floor((diff % (1000 * 60)) / 1000);
-      
-      setTimeLeft({ 
+      setTimeLeft({
         d: d.toString().padStart(2, '0'),
-        h: h.toString().padStart(2, '0'), 
-        m: m.toString().padStart(2, '0'), 
-        s: s.toString().padStart(2, '0') 
+        h: h.toString().padStart(2, '0'),
+        m: m.toString().padStart(2, '0'),
+        s: s.toString().padStart(2, '0')
       });
     };
-
     updateTimer();
-    const timer = setInterval(updateTimer, 1000);
-    return () => clearInterval(timer);
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
   }, [lotData?.expiresAt]);
 
-  const images = lotData?.image ? [lotData.image] : [
-    "https://images.unsplash.com/photo-1621259182978-fbf93132d53d?q=80&w=2000&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1544636331-e26879cd4d9b?q=80&w=2000&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?q=80&w=2000&auto=format&fit=crop"
-  ];
-
-  const bids = lotData?.bidHistory || [];
-
-  const handlePlaceBid = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const user = JSON.parse(localStorage.getItem("apex_user") || "{}");
-    if (!user.email) return;
-
-    setIsSubmitting(true);
-    try {
-      await fetch("/api/bid", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          lotId: id,
-          amount: Number(bidValue),
-          email: user.email
-        })
-      });
-      
-      await new Promise(r => setTimeout(r, 2000));
-      setIsSubmitting(false);
-      setIsBiddingModalOpen(false);
-      setBidValue("");
-    } catch (err) {
-      console.error("Bid submission failed:", err);
-      setIsSubmitting(false);
-    }
-  };
-
-  const invoiceSent = lotData?.adminInvoiceStatus === 'Sent';
-
-  if (!lotData) {
+  if (loadError) {
     return (
-      <div className="h-screen bg-[#050505] flex items-center justify-center p-12">
-        <div className="text-white/20 font-mono text-[9px] uppercase tracking-[0.5em] animate-pulse">Syncing Vault Node...</div>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center pt-20">
+         <div className="flex flex-col items-center max-w-sm text-center">
+            <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
+            <h2 className="text-xl font-bold text-slate-800 mb-2">Vehicle Not Found</h2>
+            <p className="text-slate-500 mb-6">The vehicle you are looking for does not exist or has been removed from the platform.</p>
+            <Link to="/inventory" className="enterprise-button enterprise-button-primary py-2.5 px-6">Return to Inventory</Link>
+         </div>
       </div>
     );
   }
 
-  return (
-    <>
-      <div className="flex flex-col lg:flex-row lg:h-[calc(100vh-64px)] lg:overflow-hidden bg-[#050505]">
-        {/* Left Section: Visuals & Data - High Density Pattern */}
-        <section className="w-full lg:w-[60%] flex flex-col border-b lg:border-b-0 lg:border-r border-white/10 lg:overflow-y-auto no-scrollbar">
-          {/* Full-Bleed Hero Image */}
-          <div className="h-[45vh] lg:h-[55vh] flex-shrink-0 bg-neutral-900 relative overflow-hidden group">
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent z-10"></div>
-            <motion.img 
-              key={currentImageIndex}
-              initial={{ scale: 1.1, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 1 }}
-              src={images[currentImageIndex]} 
-              className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-1000" 
-            />
-            
-            <div className="absolute top-6 md:top-8 left-6 md:left-8 z-20 flex flex-wrap gap-2 md:gap-3">
-              <div className="flex items-center gap-2 bg-red-700 px-3 md:px-4 py-1 md:py-1.5 text-[8px] md:text-[9px] font-black uppercase tracking-[0.2em] text-white">
-                <span className="w-1 md:w-1.5 h-1 md:h-1.5 bg-white rounded-full animate-pulse" />
-                Live Channel
-              </div>
-              <div className="bg-black/90 backdrop-blur-md border border-white/10 px-3 md:px-4 py-1 md:py-1.5 text-[8px] md:text-[9px] font-black uppercase tracking-[0.2em] text-white/60 font-mono">
-                Lot #{id?.split('-')[0].toUpperCase() || '72091'}
-              </div>
-            </div>
-
-            <div className="absolute bottom-6 md:bottom-8 left-6 md:left-8 z-20 space-y-3 md:space-y-4">
-              <motion.h1 
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                className="text-4xl md:text-6xl font-black tracking-tighter uppercase italic leading-none"
-              >
-                {lotData?.name || "Apex Node"} <br />
-                <span className="text-white/20">Institutional Asset</span>
-              </motion.h1>
-              <div className="flex items-center gap-3 md:gap-4">
-                <span className="w-8 md:w-12 h-[1px] bg-white/20" />
-                <p className="text-white/40 text-[8px] md:text-[9px] font-black tracking-[0.3em] md:tracking-[0.4em] uppercase italic">Verified Acquisition • Sterling Procurement</p>
-              </div>
-            </div>
-
-            {/* Controls */}
-            <div className="absolute bottom-6 md:bottom-8 right-6 md:right-8 z-20 flex gap-1">
-              {images.map((_, i) => (
-                <button 
-                  key={i}
-                  onClick={() => setCurrentImageIndex(i)}
-                  className={cn(
-                    "h-1 md:h-1.5 transition-all duration-500",
-                    currentImageIndex === i ? "bg-white w-12 md:w-20" : "bg-white/10 hover:bg-white/30 w-6 md:w-12"
-                  )}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Information Grid: High Density Style */}
-          <div className="flex-1 grid grid-cols-2 md:grid-cols-3 bg-[#080808]">
-            {[
-              { label: "Odometer", value: "1,420", unit: "mi" },
-              { label: "Title Status", value: "CLEAN", unit: "" },
-              { label: "Geographic Hub", value: "APEX VAULT 01", unit: "" },
-              { label: "Powerplant", value: "5.5L LT6 V8", unit: "" },
-              { label: "Transmission", value: "8-SPD DCT", unit: "" },
-              { label: "Colorway", value: "CARBON FLASH", unit: "" },
-              { label: "VIN Sequence", value: "JTJAA", unit: "..." },
-              { label: "Verified Data", value: "PDK-8SPD", unit: "" },
-              { label: "Dossier Status", value: "VERIFIED", unit: "" },
-            ].map((spec, i) => (
-              <div key={i} className="p-6 md:p-12 border-r border-b border-white/5 group hover:bg-white/[0.01] transition-colors overflow-hidden">
-                <span className="text-[8px] md:text-[9px] uppercase tracking-[0.3em] md:tracking-[0.4em] font-black text-white/10 block mb-2 md:mb-3 group-hover:text-white/20 transition-colors italic whitespace-nowrap">{spec.label}</span>
-                <span className="text-xl md:text-2xl font-mono text-white tracking-tighter uppercase font-bold leading-none truncate block">
-                  {spec.value} <span className="text-[10px] md:text-xs text-white/20">{spec.unit}</span>
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Right Section: Bid Engine & CRM Pipeline - High Density Pattern */}
-        <section className="flex-1 bg-[#0A0A0A] flex flex-col lg:overflow-hidden min-h-[600px] lg:min-h-0">
-          {/* Active Bidding Module */}
-          <div className="p-6 md:p-12 border-b border-white/10 space-y-10 md:space-y-16">
-            <div className="flex justify-between items-baseline gap-4">
-              <div className="space-y-1">
-                <span className="text-[8px] md:text-[9px] uppercase tracking-[0.4em] md:tracking-[0.5em] font-black text-white/20 italic">Current Allocation pulse</span>
-                <div className="flex items-center gap-2 md:gap-3">
-                  <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse blur-[1px]" />
-                  <span className="text-[8px] md:text-[10px] font-mono font-bold text-white/40 tracking-widest uppercase">TUNNEL_ACTIVE_4.2</span>
-                </div>
-              </div>
-              <div className="text-right flex-shrink-0">
-                <span className="text-4xl md:text-6xl font-light tracking-tighter text-white font-mono leading-none">
-                  {formatCurrency(lotData?.currentBid || 124500)}
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-6 md:space-y-8">
-              {lotData.adminInvoiceStatus === 'Sent' ? (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="p-6 md:p-12 bg-white text-black border border-white/10 space-y-4 md:space-y-6 text-center shadow-xl"
-                >
-                  <CheckCircle className="w-10 md:w-12 h-10 md:h-12 mx-auto mb-2" />
-                  <h3 className="text-2xl md:text-3xl font-black uppercase tracking-tighter italic leading-none">Invoice <br />Dispatched</h3>
-                  <div className="h-[1px] w-8 md:w-12 bg-black/10 mx-auto" />
-                  <p className="text-[9px] md:text-[10px] font-bold uppercase tracking-[0.25em] leading-relaxed opacity-60 max-w-xs mx-auto">
-                    Please check both your Primary Inbox and Spam/Junk folders for procurement documents from Apex Strategic Holdings.
-                  </p>
-                </motion.div>
-              ) : lotData.status === 'Sold' ? (
-                <div className="p-6 md:p-12 border border-white/10 bg-[#0A0A0A] space-y-6 md:space-y-8 text-center uppercase tracking-widest">
-                   <div className="space-y-2">
-                     <span className="text-[7px] md:text-[8px] uppercase tracking-[0.4em] font-black text-white/20">Market Status</span>
-                     <h3 className="text-2xl md:text-3xl font-black tracking-tighter italic text-amber-500">Lot Closed</h3>
-                   </div>
-                   <div className="h-[1px] w-8 md:w-12 bg-white/10 mx-auto" />
-                   <div className="space-y-4">
-                     <p className="text-[8px] md:text-[10px] font-bold tracking-[0.2em] leading-relaxed text-white/40">
-                       A formal commercial invoice is being processed by Sterling and will be transmitted shortly.
-                     </p>
-                   </div>
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[8px] md:text-[9px] uppercase tracking-[0.4em] font-black text-white/20">Time Remaining</span>
-                    <div className="flex gap-1">
-                      {[timeLeft.d, timeLeft.h, timeLeft.m, timeLeft.s].map((t, i) => (
-                        <div key={i} className="flex items-baseline gap-1">
-                          <span className={cn("text-lg md:text-xl font-mono font-bold tracking-tighter", i === 3 ? "text-emerald-500" : "text-white")}>{t}</span>
-                          <span className="text-[7px] md:text-[8px] font-mono text-white/20 uppercase">{["D", "H", "M", "S"][i]}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  {localStorage.getItem('apex_user') ? (
-                    <button 
-                      onClick={() => setIsBiddingModalOpen(true)}
-                      className="w-full bg-[#D4AF37] text-black font-black uppercase tracking-[0.4em] py-5 md:py-7 text-[9px] md:text-[10px] hover:bg-[#B5962E] transition-all relative overflow-hidden group shadow-xl"
-                    >
-                      <span className="relative z-10 flex items-center justify-center gap-3">
-                        <Gavel className="w-4 h-4 mb-0.5" />
-                        Access Allocation Terminal
-                      </span>
-                      <motion.div 
-                        animate={{ x: ["-100%", "100%"] }}
-                        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                        className="absolute inset-y-0 w-1/3 bg-white/20 skew-x-12"
-                      />
-                    </button>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="p-6 bg-white/5 border border-white/10 text-center space-y-4">
-                        <AlertCircle className="w-6 h-6 text-white/20 mx-auto" />
-                        <p className="text-[9px] uppercase tracking-[0.3em] font-black leading-relaxed text-white/40">
-                          Institutional authorization required for market participation. 
-                        </p>
-                      </div>
-                      <button 
-                        onClick={() => window.dispatchEvent(new CustomEvent('apex-open-login'))}
-                        className="w-full py-6 bg-white text-black text-[10px] font-black uppercase tracking-[0.6em] hover:bg-neutral-200 transition-all"
-                      >
-                         Secure Sign In
-                      </button>
-                    </div>
-                  )}
-                  <p className="text-[8px] text-center text-white/10 uppercase tracking-[0.3em] font-black italic">Institutional Entry Point Only</p>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Real-Time Bidding Stream */}
-          <div className="flex-1 flex flex-col min-h-[400px] lg:min-h-0 bg-[#050505]">
-            <div className="px-6 md:px-12 py-6 border-b border-white/10 flex justify-between items-center bg-[#080808]">
-              <h3 className="text-[8px] md:text-[9px] uppercase tracking-[0.4em] md:tracking-[0.5em] font-black text-white/20 italic">Activity Tunnels</h3>
-              <div className="flex items-center gap-2 md:gap-3">
-                <div className="w-1 h-1 bg-emerald-500 rounded-full" />
-                <span className="text-[8px] md:text-[9px] text-emerald-500 font-mono font-bold tracking-tighter">SIGNAL_NOMINAL</span>
-              </div>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto no-scrollbar font-mono text-[9px] md:text-[10px]">
-              {bids.map((bid, i) => (
-                <div 
-                  key={bid.id} 
-                  className={cn(
-                    "px-6 md:px-12 py-5 md:py-6 flex justify-between items-center border-b border-white/5 transition-all group hover:bg-white/[0.02] cursor-default",
-                    i === 0 ? "bg-white/[0.02] border-l-[1px] border-l-white" : ""
-                  )}
-                >
-                  <div className="flex flex-col gap-1">
-                    <span className="text-white/40 group-hover:text-white/60 tracking-[0.15em] uppercase font-bold">{bid.bidder || "AUTHORIZED_NODE"}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-white/10 uppercase text-[7px] md:text-[8px] font-bold tracking-tighter">{new Date(bid.timestamp).toLocaleTimeString()} SIGNAL</span>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-0.5">
-                    <span className="text-white font-bold tracking-tighter text-lg md:text-xl group-hover:text-emerald-500 transition-colors">{formatCurrency(bid.amount)}</span>
-                    <span className="text-[7px] md:text-[8px] font-black text-white/5 tracking-[0.3em] uppercase">verified_allocation</span>
-                  </div>
-                </div>
-              ))}
-              
-              <div className="p-12 md:p-16 text-center opacity-40">
-                <div className="inline-block border border-dashed border-white/10 px-6 md:px-10 py-4 md:py-6 bg-white/[0.01]">
-                  <span className="text-[8px] md:text-[9px] text-white/30 uppercase tracking-[0.4em] italic leading-loose font-black px-2">
-                    Monitoring Encrypted Node Data...
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Global Node Status Footer */}
-          <div className="p-8 bg-black border-t border-white/10">
-            <div className="flex items-center justify-between">
-              <div className="flex space-x-12">
-                <div className="flex flex-col gap-1">
-                  <span className="text-[8px] text-white/20 uppercase font-black tracking-[0.4em]">Node Velocity</span>
-                  <span className="text-[10px] text-white/60 font-mono font-bold italic tracking-tighter uppercase whitespace-nowrap">4.2 Bids/Min per node</span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-[8px] text-white/20 uppercase font-black tracking-[0.4em]">Signal Latency</span>
-                  <span className="text-[10px] text-white/60 font-mono font-bold italic tracking-tighter uppercase">8ms (Verified)</span>
-                </div>
-              </div>
-              <div className="hidden sm:flex items-center space-x-6 px-6 py-2.5 border border-white/5 bg-white/5 rounded-full">
-                <span className="text-[9px] uppercase tracking-tighter font-black text-white/20 italic">Global Distribution</span>
-                <div className="w-12 h-6 bg-emerald-950/30 rounded-full relative border border-emerald-500/20 overflow-hidden">
-                  <motion.div 
-                    animate={{ x: [-5, 30, -5] }}
-                    transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-                    className="absolute top-1.5 w-3 h-3 bg-emerald-500 rounded-full blur-[1px] shadow-[0_0_12px_rgba(16,185,129,1)]" 
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
+  if (!lotData) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center pt-20">
+         <div className="flex flex-col items-center">
+            <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4" />
+            <p className="text-slate-500 font-medium">Loading Vehicle Details...</p>
+         </div>
       </div>
+    );
+  }
 
-      {/* Verification Wall Modal */}
-      <AnimatePresence>
-        {isBiddingModalOpen && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-xl"
-          >
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="w-full max-w-lg bg-[#0a0a0a] border border-white/10 p-8 md:p-12 rounded-sm space-y-8 md:space-y-12 relative overflow-hidden my-auto"
-            >
-              <button 
-                onClick={() => setIsBiddingModalOpen(false)}
-                className="absolute top-6 right-6 text-white/40 hover:text-white transition-colors"
-              >
-                <XBtn />
-              </button>
+  const {
+      name, image, images = [], id: lotId, currentBid, bids = [],
+      year, make, model, category, specifications = {},
+      historyLogs = [], conditionInfo = {}, sellerInfo = {}
+  } = lotData;
+  const allImages = [image, ...images].filter(Boolean);
 
-              <div className="space-y-4 text-center">
-                <div className="w-16 h-16 bg-white/5 border border-white/10 rounded-full flex items-center justify-center mx-auto mb-8">
-                  <ShieldCheck className="w-8 h-8 text-white/40" />
-                </div>
-                <h3 className="text-2xl font-bold uppercase tracking-widest italic">Verification Vault</h3>
-                <p className="text-[10px] text-white/40 uppercase tracking-[0.2em] font-medium leading-relaxed">
-                  Enter your private access token or request bid authorization from our procurement director.
-                </p>
-              </div>
+  const highestBidder = bids.length > 0 ? bids[bids.length - 1].bidder : null;
+  const isWinning = user && highestBidder === user.email;
+  
+  const minBid = currentBid + 100; // Increment of 100
+  const canBid = user && (escrowBalance >= (minBid * 0.10)); // Require 10% of bid minimum in escrow
 
-              <form className="space-y-6" onSubmit={handlePlaceBid}>
-                <div className="space-y-1.5">
-                  <label className="text-[9px] uppercase tracking-widest font-bold text-white/30 ml-2">Allocation Token</label>
-                  <input 
-                    type="password" 
-                    placeholder="ENTER_AUTHORIZED_TOKEN"
-                    className="w-full bg-white/5 border border-white/10 p-5 rounded-sm text-sm font-mono tracking-widest placeholder:text-white/10 focus:outline-none focus:border-white/40 transition-all"
-                    required
-                  />
-                  <div className="flex items-center gap-2 mt-2 ml-2">
-                    <AlertCircle className="w-3 h-3 text-white/20" />
-                    <span className="text-[8px] text-white/20 uppercase font-bold tracking-widest">Single-use persistent tunnel</span>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[9px] uppercase tracking-widest font-bold text-white/30 ml-2">Bid Amount (USD)</label>
-                  <input 
-                    type="number" 
-                    value={bidValue}
-                    onChange={(e) => setBidValue(e.target.value)}
-                    placeholder="125,000"
-                    className="w-full bg-white/5 border border-white/10 p-5 rounded-sm text-2xl font-mono font-bold tracking-tighter placeholder:text-white/10 focus:outline-none focus:border-white/40 transition-all text-white"
-                    required
-                  />
-                </div>
-
-                <button 
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full py-6 bg-white text-black text-xs font-bold uppercase tracking-[0.4em] rounded-sm hover:bg-neutral-200 transition-all disabled:opacity-50"
-                >
-                  {isSubmitting ? "Locking Channel..." : "Authorize Allocation"}
-                </button>
-
-                <p className="text-center text-[8px] text-white/20 uppercase tracking-widest font-medium">
-                  By clicking, you agree to invoice assignment conditions as per Article 4 Logistics Manifest.
-                </p>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
-  );
-}
-
-function InvoiceOverlay({ amount }: { amount: string }) {
   return (
-    <div className="fixed inset-0 z-[200] bg-black flex items-center justify-center p-6 overflow-y-auto">
-      <motion.div 
-        initial={{ opacity: 0, scale: 1.1 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-4xl space-y-12 my-auto"
-      >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
-           <div className="space-y-8">
-              <div className="w-16 h-16 bg-green-500 flex items-center justify-center rounded-sm rotate-45 mb-12 shadow-[0_0_50px_rgba(34,197,94,0.3)]">
-                <ShieldCheck className="w-8 h-8 text-black -rotate-45" />
+    <div className="bg-slate-50 pt-6 pb-24 text-slate-800">
+      <div className="max-w-[1600px] mx-auto px-6">
+        
+        {/* Navigation Breadcrumb */}
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500 mb-6">
+           <Link to="/" className="hover:text-blue-700">Home</Link>
+           <ChevronRight className="w-3 h-3" />
+           <Link to="/inventory" className="hover:text-blue-700">Vehicle Inventory</Link>
+           <ChevronRight className="w-3 h-3" />
+           <span className="text-slate-900">{name}</span>
+        </div>
+
+        {/* Global Page Header */}
+        <div className="flex flex-col lg:flex-row justify-between lg:items-end gap-6 mb-8 border-b border-slate-200 pb-6">
+           <div>
+              <div className="flex items-center gap-2 mb-2">
+                 <div className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-widest flex items-center gap-1">
+                    LOT #{lotId.substring(0, 8)}
+                 </div>
+                 {category && (
+                    <div className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-widest hidden sm:block">
+                       {category}
+                    </div>
+                 )}
+                 <div className="bg-green-100 text-green-700 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-widest flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3" /> VERIFIED SELLER
+                 </div>
               </div>
-              <h1 className="text-5xl font-bold uppercase tracking-tighter leading-none italic">
-                Bid Locked & <br />Allocated
+              <h1 className="text-3xl md:text-5xl font-display font-bold text-slate-900 tracking-tight leading-tight">
+                 {year} {name}
               </h1>
-              <div className="space-y-2">
-                <p className="text-sm text-white/40 uppercase tracking-widest font-medium leading-relaxed">
-                  Lot Closed. A formal commercial invoice outlining bank wire instruction coordinates has been generated.
-                </p>
-                <p className="text-[10px] font-mono text-green-500/60 uppercase tracking-tighter">
-                  Status: Secure Channel Established // Invoice ID: APX-9921-2026
-                </p>
+              <p className="text-sm font-semibold text-slate-500 mt-2">VIN: {lotId.padEnd(17, 'X').toUpperCase()} • Odometer: {specifications.mileage || "N/A"} mi • Location: {sellerInfo.location || "N/A"}</p>
+           </div>
+           
+           <div className="flex items-center gap-3">
+              <button className="enterprise-button enterprise-button-outline px-4 py-2 text-sm flex gap-2">
+                 <Scale className="w-4 h-4" /> Compare
+              </button>
+              <button className="enterprise-button enterprise-button-outline px-4 py-2 text-sm flex gap-2">
+                 <Heart className="w-4 h-4 text-red-500" /> Watchlist
+              </button>
+              <button className="enterprise-button enterprise-button-outline px-4 py-2 text-sm flex gap-2">
+                 <Share2 className="w-4 h-4" /> Share
+              </button>
+           </div>
+        </div>
+
+        {/* Dynamic Layout Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+           
+           {/* Main Column (Images + Specs) */}
+           <div className="lg:col-span-8 flex flex-col gap-8">
+              
+              {/* Image Gallery */}
+              <div className="enterprise-card bg-white p-2">
+                 <div 
+                   className="relative aspect-video bg-neutral-100 rounded-lg overflow-hidden cursor-pointer group"
+                   onClick={() => setIsFullscreen(true)}
+                 >
+                    <img 
+                      src={allImages[currentImageIndex]} 
+                      alt={`${name} View ${currentImageIndex + 1}`} 
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                    />
+                    <div className="absolute inset-0 flex items-center justify-between p-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                       <button 
+                         onClick={(e) => { e.stopPropagation(); setCurrentImageIndex(i => i > 0 ? i - 1 : allImages.length - 1); }}
+                         className="w-10 h-10 rounded-full bg-white/80 backdrop-blur shadow-lg flex items-center justify-center text-slate-900 hover:bg-white transition-colors"
+                       >
+                         <ArrowLeft className="w-5 h-5" />
+                       </button>
+                       <button 
+                         onClick={(e) => { e.stopPropagation(); setCurrentImageIndex(i => i < allImages.length - 1 ? i + 1 : 0); }}
+                         className="w-10 h-10 rounded-full bg-white/80 backdrop-blur shadow-lg flex items-center justify-center text-slate-900 hover:bg-white transition-colors"
+                       >
+                         <ChevronRight className="w-5 h-5" />
+                       </button>
+                    </div>
+                    <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur text-white px-3 py-1.5 rounded-md text-sm font-semibold shadow-lg">
+                       <Search className="w-4 h-4 inline mr-2 mb-0.5" /> Hover to Zoom
+                    </div>
+                 </div>
+                 
+                 {/* Thumbnails */}
+                 <div className="flex gap-2 p-2 mt-2 overflow-x-auto no-scrollbar">
+                    {allImages.map((img, idx) => (
+                       <button 
+                         key={idx} 
+                         onClick={() => setCurrentImageIndex(idx)}
+                         className={cn(
+                           "flex-shrink-0 w-24 h-16 rounded-md overflow-hidden border-2 transition-all",
+                           currentImageIndex === idx ? "border-blue-600 shadow-md" : "border-transparent opacity-60 hover:opacity-100"
+                         )}
+                       >
+                          <img src={img} alt="" className="w-full h-full object-cover" />
+                       </button>
+                    ))}
+                 </div>
               </div>
-              <div className="pt-8 flex gap-6">
-                <Link to="/" className="text-[10px] font-bold uppercase tracking-[0.3em] border border-white/20 px-8 py-4 rounded-sm hover:border-white transition-colors">Exit Portal</Link>
-                <button className="text-[10px] font-bold uppercase tracking-[0.3em] bg-white text-black px-8 py-4 rounded-sm hover:bg-neutral-200 transition-all">Download Manifest</button>
+
+              {/* Detailed Specs Grid */}
+              <div className="enterprise-card bg-white p-8">
+                 <h2 className="text-xl font-bold border-b border-slate-100 pb-4 mb-6 flex items-center gap-2">
+                    <Info className="w-5 h-5 text-blue-600"/> Vehicle Data Hub
+                 </h2>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-y-6 gap-x-12">
+                    <div className="space-y-4">
+                       <h3 className="font-semibold text-slate-900 text-sm uppercase tracking-wider mb-2 text-blue-800">Primary Specs</h3>
+                       <div className="flex justify-between pb-2 border-b border-slate-100">
+                          <span className="text-slate-500 font-medium text-sm">Odometer</span>
+                          <span className="font-bold text-slate-900 text-sm">{specifications.mileage || "N/A"} mi (Actual)</span>
+                       </div>
+                       <div className="flex justify-between pb-2 border-b border-slate-100">
+                          <span className="text-slate-500 font-medium text-sm">Primary Damage</span>
+                          <span className="font-bold text-red-600 text-sm">{conditionInfo.primaryDamage || "Front End"}</span>
+                       </div>
+                       <div className="flex justify-between pb-2 border-b border-slate-100">
+                          <span className="text-slate-500 font-medium text-sm">Body Style</span>
+                          <span className="font-bold text-slate-900 text-sm">{specifications.bodyStyle || "Coupe"}</span>
+                       </div>
+                       <div className="flex justify-between pb-2 border-b border-slate-100">
+                          <span className="text-slate-500 font-medium text-sm">Color</span>
+                          <span className="font-bold text-slate-900 text-sm">{specifications.color || "Black"}</span>
+                       </div>
+                    </div>
+                    
+                    <div className="space-y-4">
+                       <h3 className="font-semibold text-slate-900 text-sm uppercase tracking-wider mb-2 text-blue-800">Drivetrain Details</h3>
+                       <div className="flex justify-between pb-2 border-b border-slate-100">
+                          <span className="text-slate-500 font-medium text-sm">Engine</span>
+                          <span className="font-bold text-slate-900 text-sm">{specifications.engine || "3.5L V6 FI DOHC"}</span>
+                       </div>
+                       <div className="flex justify-between pb-2 border-b border-slate-100">
+                          <span className="text-slate-500 font-medium text-sm">Transmission</span>
+                          <span className="font-bold text-slate-900 text-sm">{specifications.transmission || "Automatic"}</span>
+                       </div>
+                       <div className="flex justify-between pb-2 border-b border-slate-100">
+                          <span className="text-slate-500 font-medium text-sm">Drive</span>
+                          <span className="font-bold text-slate-900 text-sm">{specifications.drivetrain || "All Wheel Drive"}</span>
+                       </div>
+                       <div className="flex justify-between pb-2 border-b border-slate-100">
+                          <span className="text-slate-500 font-medium text-sm">Fuel Type</span>
+                          <span className="font-bold text-slate-900 text-sm">{specifications.fuel || "Gas"}</span>
+                       </div>
+                    </div>
+                 </div>
               </div>
+
            </div>
 
-           <div className="p-12 bg-white text-black rounded-sm space-y-12 shadow-[0_100px_200px_rgba(255,255,255,0.05)] border-l-8 border-green-500">
-              <div className="flex justify-between items-start border-b border-black/10 pb-8">
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Client Allocation</span>
-                  <span className="text-xs font-bold">{localStorage.getItem('user_email') || "VERIFIED_BIDDER"}</span>
-                </div>
-                <div className="text-right flex flex-col gap-1">
-                  <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Invoice Amount</span>
-                  <span className="text-4xl font-mono font-bold tracking-tighter">${amount}</span>
-                </div>
+           {/* Right Column (Bidding Terminal) */}
+           <div className="lg:col-span-4 flex flex-col gap-6">
+              
+              {/* Bidding Card */}
+              <div className="enterprise-card bg-white p-6 shadow-lg shadow-slate-200/50">
+                 
+                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6 relative overflow-hidden">
+                    <div className="absolute right-0 top-0 bottom-0 opacity-10">
+                       <Timer className="w-24 h-24 -mr-4 mt-2" />
+                    </div>
+                    {isExpired ? (
+                      <div className="text-center py-4">
+                         <Gavel className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                         <div className="text-xl font-display font-bold text-slate-900 uppercase">Auction Resolved</div>
+                         <div className="text-xs text-slate-500 mt-1 font-semibold uppercase tracking-wider">Awaiting Final Contract</div>
+                      </div>
+                    ) : (
+                      <>
+                        <h4 className="text-[10px] uppercase font-bold tracking-widest text-slate-500 mb-2">Time Remaining</h4>
+                        <div className={cn(
+                           "flex justify-between items-center",
+                           isExtendedTimer ? "text-red-600 animate-pulse" : "text-slate-900"
+                        )}>
+                           <div className="flex flex-col items-center">
+                              <span className="text-3xl font-display font-bold leading-none">{timeLeft.d}</span>
+                              <span className="text-[9px] uppercase font-bold tracking-widest mt-1">Days</span>
+                           </div>
+                           <span className="text-3xl font-light opacity-50 mb-4">:</span>
+                           <div className="flex flex-col items-center">
+                              <span className="text-3xl font-display font-bold leading-none">{timeLeft.h}</span>
+                              <span className="text-[9px] uppercase font-bold tracking-widest mt-1">Hrs</span>
+                           </div>
+                           <span className="text-3xl font-light opacity-50 mb-4">:</span>
+                           <div className="flex flex-col items-center">
+                              <span className="text-3xl font-display font-bold leading-none">{timeLeft.m}</span>
+                              <span className="text-[9px] uppercase font-bold tracking-widest mt-1">Min</span>
+                           </div>
+                           <span className="text-3xl font-light opacity-50 mb-4">:</span>
+                           <div className="flex flex-col items-center">
+                              <span className="text-3xl font-display font-bold leading-none">{timeLeft.s}</span>
+                              <span className="text-[9px] uppercase font-bold tracking-widest mt-1">Sec</span>
+                           </div>
+                        </div>
+                      </>
+                    )}
+                 </div>
+
+                 <div className="mb-6">
+                    <div className="flex justify-between items-end mb-2">
+                       <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Current Bid</span>
+                       {isWinning && (
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                             You are winning!
+                          </span>
+                       )}
+                    </div>
+                    <div className="text-5xl font-display font-bold text-blue-700 tracking-tight leading-none mb-2">
+                       {formatCurrency(currentBid)}
+                    </div>
+                    <div className="text-xs text-slate-400 font-semibold uppercase tracking-wider border-b border-slate-100 pb-4">
+                       Bidder: {maskBidder(highestBidder)}
+                    </div>
+                 </div>
+
+                 {!isExpired && (
+                    <div className="space-y-4">
+                       {user ? (
+                          <>
+                             {canBid ? (
+                                <button 
+                                  onClick={() => setIsBiddingModalOpen(true)}
+                                  className="w-full enterprise-button enterprise-button-primary shadow-lg shadow-blue-600/30 font-bold text-lg py-4 flex flex-col items-center justify-center group relative overflow-hidden"
+                                >
+                                   <div className="absolute inset-0 bg-white/20 translate-y-[100%] group-hover:translate-y-[0] transition-transform duration-300" />
+                                   <span className="relative z-10 flex items-center gap-2"><ArrowUp className="w-5 h-5"/> Place Maximum Bid</span>
+                                   <span className="relative z-10 text-[10px] uppercase tracking-widest font-medium mt-1 text-blue-100">Step Minimum: {formatCurrency(minBid)}</span>
+                                </button>
+                             ) : (
+                                <div className="bg-orange-50 border border-orange-200 p-4 rounded-xl">
+                                   <div className="flex items-start gap-3">
+                                      <AlertCircle className="w-5 h-5 text-orange-600 flex-shrink-0" />
+                                      <div>
+                                         <h4 className="font-bold text-orange-900 text-sm">Deposit Required</h4>
+                                         <p className="text-xs text-orange-800 mt-1 pb-3">You must hold a refundable deposit matching 10% of your total desired bidding power.</p>
+                                         <Link to="/dashboard" className="text-xs font-bold uppercase tracking-wider text-orange-600 hover:text-orange-700 underline underline-offset-4">Fund Escrow Wallet →</Link>
+                                      </div>
+                                   </div>
+                                </div>
+                             )}
+                          </>
+                       ) : (
+                          <div className="bg-slate-100 border border-slate-200 p-4 rounded-xl text-center">
+                             <h4 className="font-bold text-slate-800 text-sm mb-2">Sign in to bid</h4>
+                             <button onClick={() => window.dispatchEvent(new Event('apex-open-login'))} className="enterprise-button bg-slate-900 text-white w-full py-2.5 shadow-md">Authenticate</button>
+                             <div className="mt-3 text-[10px] uppercase font-bold text-slate-500">New user? <button onClick={() => window.dispatchEvent(new Event('apex-open-register'))} className="text-blue-600 underline">Register Now</button></div>
+                          </div>
+                       )}
+                    </div>
+                 )}
+
+                 {/* Key Alerts */}
+                 <div className="mt-6 flex flex-col gap-3">
+                    <div className="flex items-center gap-3 p-3 bg-red-50 border border-red-100 rounded-lg">
+                       <Zap className="w-4 h-4 text-red-500" />
+                       <span className="text-sm font-semibold text-red-800">Salvage Title Verified</span>
+                    </div>
+                    <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-100 rounded-lg">
+                       <CheckCircle className="w-4 h-4 text-green-600" />
+                       <span className="text-sm font-semibold text-green-800">Keys Present</span>
+                    </div>
+                 </div>
+
               </div>
 
-              <div className="space-y-6">
-                <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
-                  <span className="opacity-40">Asset ID</span>
-                  <span className="tracking-tighter font-mono">LOT-Z06-C2D4</span>
-                </div>
-                <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
-                  <span className="opacity-40">Vault Location</span>
-                  <span className="tracking-tighter font-mono">TERMINAL_01_NEW_YORK</span>
-                </div>
-                <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
-                  <span className="opacity-40">Procurement Fee</span>
-                  <span className="tracking-tighter font-mono">$0.00 (WAIVED)</span>
-                </div>
-              </div>
-
-              <div className="p-6 bg-black/[0.03] border-2 border-dashed border-black/10 rounded-sm">
-                <div className="flex items-center gap-4">
-                  <AlertCircle className="w-5 h-5 opacity-40" />
-                  <p className="text-[9px] uppercase font-bold tracking-tighter leading-tight opacity-40">
-                    Sterling will transmit your signed routing manifest to your verified email within 10 minutes. Please prepare wire coordinates.
-                  </p>
-                </div>
+              {/* History Block */}
+              <div className="enterprise-card bg-white p-6">
+                 <h2 className="text-lg font-bold border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
+                    <History className="w-4 h-4 text-slate-400" /> Bid History
+                 </h2>
+                 <div className="space-y-3 max-h-[250px] overflow-y-auto no-scrollbar pr-2">
+                    {bids.length > 0 ? [...bids].reverse().map((bid: any, i: number) => (
+                       <div key={bid.id || i} className={cn(
+                          "flex justify-between items-center p-3 rounded-lg border",
+                          i === 0 ? "bg-blue-50/50 border-blue-100" : "bg-white border-slate-100"
+                       )}>
+                          <div className="flex flex-col">
+                             <span className="text-sm font-mono font-bold text-slate-900">{formatCurrency(bid.amount)}</span>
+                             <span className="text-[10px] text-slate-500 uppercase tracking-wider">{new Date(bid.timestamp).toLocaleTimeString()}</span>
+                          </div>
+                          <div className="bg-slate-100 px-2 py-1 rounded text-xs font-semibold text-slate-600">
+                             {maskBidder(bid.bidder)}
+                          </div>
+                       </div>
+                    )) : (
+                       <div className="text-center py-6 text-sm text-slate-400 font-medium">No bids received yet.</div>
+                    )}
+                 </div>
               </div>
            </div>
         </div>
-      </motion.div>
-    </div>
-  )
-}
+      </div>
 
-function XBtn() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
+      {/* Fullscreen Gallery */}
+      <AnimatePresence>
+        {isFullscreen && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] bg-black/95 flex flex-col backdrop-blur-md"
+          >
+             <div className="flex justify-between items-center p-6 border-b border-white/10">
+                <div className="text-white font-bold text-xl">{name}</div>
+                <button onClick={() => setIsFullscreen(false)} className="text-white/50 hover:text-white p-2 rounded-full hover:bg-white/10 transition-colors">
+                   <AlertCircle className="w-6 h-6 rotate-45" /> 
+                </button>
+             </div>
+             
+             <div className="flex-1 relative flex justify-center items-center overflow-hidden p-8">
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setCurrentImageIndex(i => i > 0 ? i - 1 : allImages.length - 1); }}
+                  className="absolute left-8 w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+                >
+                  <ArrowLeft className="w-8 h-8" />
+                </button>
+                
+                <img 
+                  src={allImages[currentImageIndex]} 
+                  alt=""
+                  className="max-w-full max-h-full object-contain drop-shadow-2xl"
+                />
+                
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setCurrentImageIndex(i => i < allImages.length - 1 ? i + 1 : 0); }}
+                  className="absolute right-8 w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+                >
+                  <ChevronRight className="w-8 h-8" />
+                </button>
+             </div>
+             
+             <div className="p-6 overflow-x-auto whitespace-nowrap flex gap-4 justify-center border-t border-white/10">
+                {allImages.map((img, idx) => (
+                   <button 
+                     key={idx} 
+                     onClick={() => setCurrentImageIndex(idx)}
+                     className={cn(
+                       "flex-shrink-0 w-32 h-20 rounded-md overflow-hidden border-2 transition-all",
+                       currentImageIndex === idx ? "border-blue-500 scale-105" : "border-transparent opacity-50 hover:opacity-100"
+                     )}
+                   >
+                      <img src={img} alt="" className="w-full h-full object-cover" />
+                   </button>
+                ))}
+             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Bidding Modal */}
+      <AnimatePresence>
+        {isBiddingModalOpen && (
+           <motion.div 
+             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+             className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+           >
+              <motion.div 
+                initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden"
+              >
+                 <div className="bg-slate-900 p-6 text-white relative">
+                    <button onClick={() => setIsBiddingModalOpen(false)} className="absolute top-6 right-6 text-slate-400 hover:text-white transition-colors">
+                       <AlertCircle className="w-5 h-5 rotate-45" />
+                    </button>
+                    <h3 className="text-xl font-bold mb-1">Place Maximum Auto-Bid</h3>
+                    <p className="text-xs text-slate-400 font-medium">LOT #{lotId.substring(0, 8)} • {name}</p>
+                 </div>
+                 
+                 <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    setIsSubmitting(true);
+                    try {
+                      const res = await fetch(`/api/lots/${id}/bid`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ amount: Number(bidValue), bidder: user.email })
+                      });
+                      if (res.ok) {
+                        setIsBiddingModalOpen(false);
+                      } else {
+                        alert("Bid submission rejected. Check minimums.");
+                      }
+                    } catch (err) {}
+                    setIsSubmitting(false);
+                 }} className="p-6 space-y-6">
+                    <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl text-center space-y-1">
+                       <span className="text-[10px] font-bold uppercase tracking-widest text-blue-800">Current Bid</span>
+                       <div className="text-3xl font-display font-bold text-blue-700">{formatCurrency(currentBid)}</div>
+                       <span className="text-[10px] font-bold uppercase tracking-widest text-blue-600 block mt-2 pt-2 border-t border-blue-200/50">Min Next Bid: {formatCurrency(minBid)}</span>
+                    </div>
+
+                    <div className="space-y-2">
+                       <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Your Maximum Bid (USD)</label>
+                       <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                          <input 
+                            type="number" 
+                            min={minBid}
+                            value={bidValue}
+                            onChange={e => setBidValue(e.target.value)}
+                            required
+                            placeholder={`${minBid}`}
+                            className="w-full bg-slate-50 border border-slate-300 pl-8 pr-4 py-3 rounded-xl text-lg font-bold text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                          />
+                       </div>
+                    </div>
+
+                    <ul className="text-xs text-slate-500 font-medium space-y-2 pb-4 border-b border-slate-100">
+                       <li className="flex gap-2"><CheckCircle className="w-4 h-4 text-slate-400 flex-shrink-0" /> Proxy bidding will bid the minimum required up to your max.</li>
+                       <li className="flex gap-2"><CheckCircle className="w-4 h-4 text-slate-400 flex-shrink-0" /> Total power available: {formatCurrency(user?.deposit_balance * 10)}</li>
+                    </ul>
+
+                    <div className="flex gap-4">
+                       <button type="button" onClick={() => setIsBiddingModalOpen(false)} className="flex-1 enterprise-button enterprise-button-outline py-3">Cancel</button>
+                       <button type="submit" disabled={isSubmitting || Number(bidValue) < minBid} className="flex-1 enterprise-button enterprise-button-primary py-3">
+                          {isSubmitting ? "Processing..." : "Confirm Bid"}
+                       </button>
+                    </div>
+                 </form>
+              </motion.div>
+           </motion.div>
+        )}
+      </AnimatePresence>
+
+    </div>
   );
 }

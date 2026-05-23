@@ -1,40 +1,18 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  --color-gold: #D4AF37;
-  --color-gold-dark: #B5962E;
-}
-
-@keyframes pulse-gold {
-  0% { text-shadow: 0 0 0px rgba(212, 175, 55, 0); }
-  50% { text-shadow: 0 0 20px rgba(212, 175, 55, 0.4); }
-  100% { text-shadow: 0 0 0px rgba(212, 175, 55, 0); }
-}
-
-@utility animate-price-pulse {
-  animation: pulse-gold 2s ease-in-out infinite;
-}
-
-@keyframes scroll {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
-}
-
-@utility animate-scroll {
-  animation: scroll 20s linear infinite;
-  display: flex;
-  width: max-content;
-}
-
-@utility no-scrollbar {
-  &::-webkit-scrollbar {
-    display: none;
-  }
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+  --font-display: "Space Grotesk", "Inter", sans-serif;
+  
+  --color-primary: #1e3a8a; /* blue-900 */
+  --color-primary-light: #2563eb; /* blue-600 */
+  --color-secondary: #facc15; /* yellow-400 */
+  
+  --color-success: #10b981;
+  --color-danger: #ef4444;
+  --color-warning: #f59e0b;
 }
 
 @layer base {
@@ -45,16 +23,56 @@
     -moz-osx-font-smoothing: grayscale;
   }
   body {
-    @apply font-sans antialiased bg-[#050505] text-[#F0F0F0] selection:bg-white/20 selection:text-white;
+    @apply font-sans antialiased bg-slate-50 text-slate-900 selection:bg-blue-600/20 selection:text-blue-900;
     overscroll-behavior-y: none;
   }
 }
 
+@utility no-scrollbar {
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 @layer components {
-  .high-density-grid {
-    @apply grid border border-white/10 bg-[#080808];
+  .enterprise-card {
+    @apply bg-white border border-slate-200/60 shadow-sm rounded-xl overflow-hidden transition-all hover:shadow-md;
   }
-  .high-density-cell {
-    @apply p-6 border-white/5 transition-colors hover:bg-white/[0.02];
+  .enterprise-button {
+    @apply inline-flex items-center justify-center px-6 py-3 font-semibold rounded-lg transition-all active:scale-95;
   }
+  .enterprise-button-primary {
+    @apply bg-blue-700 text-white hover:bg-blue-800 shadow-md shadow-blue-700/20;
+  }
+  .enterprise-button-outline {
+    @apply border-2 border-slate-200 bg-white text-slate-700 hover:border-blue-600 hover:text-blue-700;
+  }
+  .enterprise-input {
+    @apply w-full bg-slate-50 border border-slate-200 p-3 rounded-lg text-sm transition-all focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20;
+  }
+  .glass-panel {
+    @apply bg-white/80 backdrop-blur-md border border-slate-200/50 shadow-[0_8px_30px_rgb(0,0,0,0.04)];
+  }
+}
+
+/* Animations */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up {
+  animation: slideUp 0.4s ease-out forwards;
+}
+
+@keyframes scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-scroll {
+  animation: scroll 30s linear infinite;
+  display: flex;
+  width: max-content;
 }

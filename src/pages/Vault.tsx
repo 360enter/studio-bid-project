@@ -4,139 +4,9 @@ import { Shield, Lock, Eye, Key, Terminal, ArrowUpRight } from "lucide-react";
 import { cn } from "@/src/lib/utils";
 
 export function Vault() {
-  const [accessPulse, setAccessPulse] = React.useState(false);
-  const [nodeId, setNodeId] = React.useState("");
-  const [signature, setSignature] = React.useState("");
-  const [authPin, setAuthPin] = React.useState("");
-  const [error, setError] = React.useState("");
-  const [loading, setLoading] = React.useState(false);
-
-  React.useEffect(() => {
-    const savedUser = localStorage.getItem('apex_user');
-    if (savedUser) {
-      try {
-        const parsed = JSON.parse(savedUser);
-        if (parsed && parsed.status === 'Approved') {
-          setAccessPulse(true);
-        }
-      } catch (e) {
-        console.error("Failed to parse saved user:", e);
-      }
-    }
-  }, []);
-
-  const handleAuthentication = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-
-    if (!nodeId.trim() || !signature.trim() || !authPin.trim()) {
-      setError("ALL PROTOCOLS MUST BE FULLY COMPLETED");
-      setLoading(false);
-      return;
-    }
-
-    if (authPin.length < 4) {
-      setError("AUTHORIZATION PIN MUST BE MINIMUM 4 DIGITS");
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const res = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: nodeId, password: signature })
-      });
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        localStorage.setItem("apex_user", JSON.stringify(data.user));
-        window.dispatchEvent(new Event('storage'));
-        setAccessPulse(true);
-      } else {
-        setError(data.error || "VAULT REJECTED GATE INGRESS CREDENTIALS");
-      }
-    } catch (err) {
-      setError("SECURE TRANSMISSION FAULT");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-[#050505] pt-24 md:pt-32 pb-24 text-white">
       <div className="max-w-7xl mx-auto px-6 md:px-12 space-y-16 md:space-y-24">
-        
-        {/* Entrance Gate */}
-        {!accessPulse ? (
-          <div className="max-w-xl mx-auto space-y-8 md:space-y-12 py-16 md:py-24 animate-fade-in">
-            <div className="text-center space-y-4 md:space-y-6">
-              <div className="w-16 md:w-20 h-16 md:h-20 bg-white/5 border border-white/10 flex items-center justify-center mx-auto rounded-full group-hover:border-white transition-all">
-                 <Lock className="w-6 md:w-8 h-6 md:h-8 text-white/20" />
-              </div>
-              <div className="space-y-4">
-                <h2 className="text-4xl md:text-6xl font-bold uppercase tracking-tighter italic leading-none">Vault Access <br />Restricted</h2>
-                <p className="text-[10px] md:text-[12px] uppercase tracking-[0.4em] md:tracking-[0.5em] text-white/30 font-black leading-loose">
-                   Sovereign node verification required. Enter critical sequence credentials to authenticate connection.
-                </p>
-              </div>
-            </div>
-
-            <form onSubmit={handleAuthentication} className="space-y-8 bg-[#0A0A0A] border border-white/10 p-8 md:p-12 shadow-2xl">
-               <div className="space-y-6">
-                 <div className="space-y-2">
-                    <label className="text-[8px] uppercase tracking-[0.4em] font-black text-white/20 ml-2">Encrypted Node ID</label>
-                    <input 
-                      type="email" 
-                      value={nodeId}
-                      onChange={e => setNodeId(e.target.value)}
-                      placeholder="CLIENT@VAULT.COM"
-                      required
-                      className="w-full bg-black border border-white/10 p-5 text-xs font-mono uppercase tracking-widest text-white outline-none focus:border-white/40 transition-all"
-                    />
-                 </div>
-                 <div className="space-y-2">
-                    <label className="text-[8px] uppercase tracking-[0.4em] font-black text-white/20 ml-2">Authentication Signature</label>
-                    <input 
-                      type="password" 
-                      value={signature}
-                      onChange={e => setSignature(e.target.value)}
-                      placeholder="••••••••"
-                      required
-                      className="w-full bg-black border border-white/10 p-5 text-xs font-mono tracking-widest text-white outline-none focus:border-white/40 transition-all"
-                    />
-                 </div>
-                 <div className="space-y-2">
-                    <label className="text-[8px] uppercase tracking-[0.4em] font-black text-white/20 ml-2">Authorization Pin</label>
-                    <input 
-                      type="password" 
-                      value={authPin}
-                      onChange={e => setAuthPin(e.target.value)}
-                      placeholder="••••"
-                      maxLength={6}
-                      required
-                      className="w-full bg-black border border-white/10 p-5 text-xs font-mono tracking-widest text-white outline-none focus:border-white/40 transition-all text-center"
-                    />
-                 </div>
-               </div>
-
-               {error && (
-                 <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-500 text-[8px] uppercase tracking-widest font-black text-center italic">
-                   {error}
-                 </div>
-               )}
-
-               <button 
-                 type="submit"
-                 disabled={loading}
-                 className="w-full py-6 bg-white text-black text-[10px] md:text-[11px] font-black uppercase tracking-[0.6em] md:tracking-[0.8em] hover:bg-neutral-200 transition-all disabled:opacity-50"
-               >
-                 {loading ? "ESTABLISHING SIGNAL..." : "Verify Credentials"}
-               </button>
-            </form>
-          </div>
-        ) : (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -228,7 +98,6 @@ export function Vault() {
                </div>
             </div>
           </motion.div>
-        )}
       </div>
     </div>
   );

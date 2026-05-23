@@ -1,70 +1,88 @@
 import React from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Shield, Users, Inbox, CheckCircle, AlertCircle, LogOut, Plus, Trash2, Link as LinkIcon, MessageSquare } from "lucide-react";
+import { 
+  Shield, Users, Inbox, CheckCircle, AlertCircle, LogOut, 
+  Plus, Trash2, Link as LinkIcon, MessageSquare, 
+  Car, Activity, Home, Database, CreditCard, ChevronRight,
+  TrendingUp, DownloadCloud
+} from "lucide-react";
 import { formatCurrency, cn } from "@/src/lib/utils";
 import { Link } from "react-router-dom";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
 export function Admin() {
-  const [isAuthenticated, setIsAuthenticated] = React.useState(false);
-  const [credentials, setCredentials] = React.useState({ user: "", pass: "" });
   const [error, setError] = React.useState("");
   const [lots, setLots] = React.useState<any>(null);
   const [allocations, setAllocations] = React.useState<any[]>([]);
   const [applications, setApplications] = React.useState<any[]>([]);
+  const [escrowRequests, setEscrowRequests] = React.useState<any[]>([]);
+  const [escrowWallets, setEscrowWallets] = React.useState<any[]>([]);
+  const [escrowInvoices, setEscrowInvoices] = React.useState<any[]>([]);
+  const [invoiceAccounts, setInvoiceAccounts] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(false);
-  const [activeTab, setActiveTab] = React.useState<'assets' | 'vetting' | 'social'>('assets');
+
+  const [activeTab, setActiveTab] = React.useState<'overview' | 'assets' | 'vetting' | 'escrow'>('overview');
+  
   const [messageTarget, setMessageTarget] = React.useState<any>(null);
+  const [invoiceRequest, setInvoiceRequest] = React.useState<any>(null);
   const [msgContent, setMsgContent] = React.useState({ title: '', message: '', type: 'info' });
 
   const [editingLot, setEditingLot] = React.useState<any>(null);
   const [newLot, setNewLot] = React.useState<any>(null);
-  const [newAllocation, setNewAllocation] = React.useState<any>(null);
+  const [csvStatus, setCsvStatus] = React.useState("");
+  const [uploadingCsv, setUploadingCsv] = React.useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
+  React.useEffect(() => {
+    fetchDashboard();
+  }, []);
+
+  const handleCsvUpload = async (file: File) => {
+    setUploadingCsv(true);
+    setCsvStatus("Processing imports...");
     try {
-      const res = await fetch("/api/admin/login", {
+      const text = await file.text();
+      const res = await fetch("/api/admin/bulk-upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(credentials)
+        body: JSON.stringify({ csvText: text })
       });
+      const data = await res.json();
       if (res.ok) {
-        setIsAuthenticated(true);
+        setCsvStatus(`Successfully imported ${data.count} vehicles.`);
         fetchDashboard();
       } else {
-        setError("ACCESS_DENIED: Invalid Node Credentials");
+        setCsvStatus(`Import failed: ${data.error}`);
       }
-    } catch (e) {
-      setError("SERVER_ERROR: Authentication Engine Offline");
+    } catch (e: any) {
+      setCsvStatus(`System Error: ${e.message}`);
     } finally {
-      setLoading(false);
+      setUploadingCsv(false);
+      setTimeout(() => setCsvStatus(""), 6000);
     }
   };
 
   const fetchDashboard = async () => {
     try {
-      const [lotsRes, appsRes, allocRes] = await Promise.all([
+      const [lotsRes, appsRes, allocRes, escrowRes] = await Promise.all([
         fetch("/api/lots"),
         fetch("/api/admin/applications"),
-        fetch("/api/allocations")
+        fetch("/api/allocations"),
+        fetch("/api/admin/escrow")
       ]);
       setLots(await lotsRes.json());
       setApplications(await appsRes.json());
       setAllocations(await allocRes.json());
+      
+      const escrowData = await escrowRes.json();
+      if (escrowData.success) {
+         setEscrowRequests(escrowData.requests);
+         setEscrowWallets(escrowData.wallets);
+         setEscrowInvoices(escrowData.invoices);
+         setInvoiceAccounts(escrowData.invoiceAccounts || []);
+      }
     } catch (e) {
       console.error("Fetch error", e);
     }
-  };
-
-  const triggerInvoice = async (lotId: string) => {
-    await fetch("/api/admin/trigger-invoice", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lotId })
-    });
-    fetchDashboard();
   };
 
   const saveLot = async (lot: any, isNew = false) => {
@@ -79,415 +97,497 @@ export function Admin() {
     fetchDashboard();
   };
 
-  const deleteLot = async (id: string) => {
-    if (!confirm("Permanently de-allocate node?")) return;
-    await fetch(`/api/admin/lots/${id}`, { method: "DELETE" });
+  const deleteLot = async (lotId: string) => {
+    if (!window.confirm(`Permanently delete lot ${lotId}?`)) return;
+    await fetch(`/api/admin/lots/${lotId}`, { method: "DELETE" });
     fetchDashboard();
   };
 
-  const vetUser = async (id: string, status: string) => {
-    try {
-      const res = await fetch("/api/admin/applications/vet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status })
-      });
-      if (res.ok) {
-        if (status === 'Approved') {
-           await fetch("/api/admin/send-notification", {
-             method: "POST",
-             headers: { "Content-Type": "application/json" },
-             body: JSON.stringify({ 
-               userId: id, 
-               title: 'Access Granted', 
-               message: 'Your institutional clearance has been approved. You are now authorized to participate in the primary market.',
-               type: 'success'
-             })
-           });
-        }
-        fetchDashboard();
-      }
-    } catch (e) {
-      console.error("Vet error", e);
-    }
-  };
-
-  const sendDirectMessage = async () => {
-    if (!messageTarget) return;
-    try {
-      const res = await fetch("/api/admin/send-notification", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          userId: messageTarget.id || messageTarget.uid, 
-          ...msgContent 
-        })
-      });
-      if (res.ok) {
-        setMessageTarget(null);
-        setMsgContent({ title: '', message: '', type: 'info' });
-      }
-    } catch (e) {
-      console.error("Send message error", e);
-    }
-  };
-
-  const manageAllocation = async (data: any, isNew = true) => {
-    const url = isNew ? "/api/admin/allocations/create" : `/api/admin/allocations/${data.id}`;
-    await fetch(url, {
+  const updateAppStatus = async (id: string, requestedStatus: string) => {
+    const finalStatus = requestedStatus === 'active' || requestedStatus === 'approved' ? 'active' : 'rejected';
+    console.log(`[APPROVAL] frontend app status update requested: ID ${id}, Status: ${finalStatus}`);
+    await fetch("/api/admin/applications/vet", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data)
+      body: JSON.stringify({ id, status: finalStatus })
     });
-    setNewAllocation(null);
     fetchDashboard();
   };
 
-  const deleteAllocation = async (id: string) => {
-    await fetch(`/api/admin/allocations/${id}`, { method: "DELETE" });
-    fetchDashboard();
+  const updateDeposit = async (id: string, amount: number) => {
+     await fetch("/api/admin/users/deposit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, deposit_balance: amount })
+     });
+     setMsgContent(prev => ({...prev, title: 'Deposit Updated', message: `Set to ${amount}`, type: 'success'}));
+     setMessageTarget(id);
+     fetchDashboard();
   };
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4 md:p-6 text-white">
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="w-full max-w-md space-y-8 md:space-y-12"
-        >
-          <div className="text-center space-y-4 md:space-y-6">
-             <div className="w-12 md:w-16 h-12 md:h-16 bg-white flex items-center justify-center mx-auto rounded-none shadow-2xl">
-               <Shield className="w-6 md:w-8 h-6 md:h-8 text-black" />
-             </div>
-             <h1 className="text-2xl md:text-3xl font-bold uppercase tracking-[0.4em] italic">Apex_Command</h1>
-             <p className="text-[8px] md:text-[10px] text-white/20 uppercase tracking-[0.4em] md:tracking-[0.5em] font-black">Institutional Operational Hub</p>
-          </div>
+  const lotArray = lots ? Object.values(lots) : [];
+  const pendingApps = applications.filter(a => a.status === 'pending');
+  const totalVolume = lotArray.reduce((acc: number, cur: any) => acc + (Number(cur.currentBid) || 0), 0) as number;
 
-          <form onSubmit={handleLogin} className="space-y-6 bg-[#0A0A0A] p-8 md:p-12 border border-white/5">
-            <AdminInput label="Command ID" value={credentials.user} onChange={(v:any) => setCredentials({...credentials, user: v})} />
-            <AdminInput label="Access Pulse" value={credentials.pass} onChange={(v:any) => setCredentials({...credentials, pass: v})} isPassword />
-            
-            {error && (
-              <div className="flex items-center gap-2 p-4 bg-red-900/20 border border-red-500/20 text-red-500 text-[10px] font-bold uppercase tracking-widest">
-                <AlertCircle className="w-4 h-4" />
-                {error}
-              </div>
-            )}
-
-            <button disabled={loading} className="w-full py-5 bg-white text-black text-[10px] font-black uppercase tracking-[0.6em] transition-all hover:bg-neutral-200">
-              Initialize Command Center
-            </button>
-          </form>
-        </motion.div>
-      </div>
-    );
-  }
+  const mockChartData = [
+     { name: 'Mon', bids: 4000, users: 240 },
+     { name: 'Tue', bids: 3000, users: 139 },
+     { name: 'Wed', bids: 2000, users: 980 },
+     { name: 'Thu', bids: 2780, users: 390 },
+     { name: 'Fri', bids: 1890, users: 480 },
+     { name: 'Sat', bids: 2390, users: 380 },
+     { name: 'Sun', bids: 3490, users: 430 },
+  ];
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white">
-      <nav className="h-16 md:h-20 border-b border-white/10 px-6 md:px-12 flex items-center justify-between bg-[#0A0A0A] fixed top-0 left-0 right-0 z-[100]">
-        <div className="flex items-center gap-6 md:gap-12 overflow-x-auto no-scrollbar">
-           <Link to="/" className="flex items-center gap-3 md:gap-4 shrink-0">
-             <Shield className="w-5 md:w-6 h-5 md:h-6 text-white" />
-             <span className="hidden sm:inline text-[9px] md:text-[11px] font-black uppercase tracking-[0.3em] md:tracking-[0.5em] text-white italic">Apex God Mode</span>
-           </Link>
-           <div className="hidden sm:block h-6 w-[1px] bg-white/10" />
-           <div className="flex gap-6 md:gap-8 shrink-0">
-              {['Assets', 'Vetting', 'Social'].map((t: any) => (
-                <button 
-                  key={t}
-                  onClick={() => setActiveTab(t.toLowerCase() as any)}
-                  className={cn("text-[9px] md:text-[10px] font-black uppercase tracking-[0.3em] md:tracking-[0.4em] transition-colors", activeTab === t.toLowerCase() ? "text-white" : "text-white/20 hover:text-white")}
-                >
-                  {t}
-                </button>
-              ))}
+    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans">
+      
+      {/* Sidebar */}
+      <aside className="w-full md:w-64 bg-slate-900 border-r border-slate-800 flex flex-col flex-shrink-0 min-h-[100vh]">
+        <div className="h-20 flex items-center px-6 border-b border-slate-800">
+           <div className="flex items-center gap-2">
+             <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+               <span className="text-white font-display font-bold text-lg">B</span>
+             </div>
+             <span className="text-xl font-display font-bold tracking-tight text-white">Bid.Cars <span className="font-light text-slate-500">Admin</span></span>
            </div>
         </div>
-        <button onClick={() => setIsAuthenticated(false)} className="flex items-center gap-2 md:gap-4 text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] md:tracking-[0.4em] text-white/20 hover:text-white transition-colors shrink-0">
-          <span className="hidden sm:inline">TERMINATE_SESSION</span> <LogOut className="w-4 h-4" />
-        </button>
-      </nav>
-
-      <main className="pt-24 md:pt-32 p-6 md:p-12 space-y-12">
-        <div className="max-w-7xl mx-auto space-y-12">
-          
-          {activeTab === 'assets' && (
-            <div className="space-y-12">
-              <div className="flex flex-col md:flex-row justify-between md:items-end border-b border-white/10 pb-12 gap-8">
-                <div className="space-y-4">
-                  <h2 className="text-[10px] uppercase font-black tracking-[0.6em] text-white/20">Operational Fleet</h2>
-                  <h3 className="text-4xl md:text-5xl font-bold uppercase tracking-tighter italic leading-none">Asset Management</h3>
-                </div>
-                <button 
-                  onClick={() => setNewLot({ id: '', name: '', floor: 0, ceiling: 0, velocity: 'Medium', image: '', expiresAt: new Date(Date.now() + 86400000).toISOString() })}
-                  className="w-full md:w-auto px-8 py-4 bg-emerald-500 text-black text-[10px] font-black uppercase tracking-[0.4em] hover:bg-emerald-400"
-                >
-                  [+] Deploy New Lot Node
-                </button>
+        
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+          {[
+            { id: 'overview', icon: Activity, label: 'Overview' },
+            { id: 'assets', icon: Database, label: 'Vehicles & Lots', count: lotArray.length },
+            { id: 'vetting', icon: Users, label: 'Identity Vetting', count: pendingApps.length },
+            { id: 'escrow', icon: CreditCard, label: 'Escrow Wallets' }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={cn(
+                "w-full flex items-center justify-between p-3 rounded-xl transition-all font-semibold text-sm",
+                activeTab === tab.id 
+                  ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20" 
+                  : "text-slate-400 hover:text-white hover:bg-slate-800"
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <tab.icon className="w-5 h-5" /> {tab.label}
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {lots && Object.values(lots).map((l: any) => (
-                  <div key={l.id} className="p-8 border border-white/10 bg-[#0A0A0A] space-y-8 group hover:border-white/40 transition-all">
-                    <div className="aspect-video bg-black/40 overflow-hidden relative border border-white/5">
-                      <img src={l.image} className="w-full h-full object-cover opacity-60" />
-                      <div className="absolute top-4 left-4 flex gap-2">
-                         <span className={cn("px-3 py-1 text-[8px] font-black uppercase tracking-widest", l.status === 'Active' ? 'bg-emerald-500/20 text-emerald-500' : 'bg-red-500/20 text-red-500')}>{l.status}</span>
-                         <span className="px-3 py-1 bg-white/5 border border-white/10 text-[8px] font-black uppercase text-white/40 uppercase tracking-widest">Vel: {l.velocity}</span>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                       <span className="text-[10px] font-mono text-white/20">{l.id}</span>
-                       <h4 className="text-xl font-bold uppercase tracking-tighter leading-none truncate">{l.name}</h4>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                       <div className="p-4 bg-white/5 border border-white/5 rounded-sm">
-                          <span className="text-[8px] uppercase tracking-widest text-white/20 block mb-1">Current Ask</span>
-                          <span className="text-lg font-mono font-bold tracking-tighter text-emerald-500">{formatCurrency(l.currentBid)}</span>
-                       </div>
-                       <div className="p-4 bg-white/5 border border-white/5 rounded-sm">
-                          <span className="text-[8px] uppercase tracking-widest text-white/20 block mb-1">Target Ceiling</span>
-                          <span className="text-lg font-mono font-bold tracking-tighter text-white/60">${(l.ceiling/1000).toFixed(1)}k</span>
-                       </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2 pt-4">
-                       <button onClick={() => setEditingLot(l)} className="flex-1 py-3 border border-white/10 text-[8px] font-black uppercase tracking-[0.3em] hover:bg-white hover:text-black transition-all">Edit Node</button>
-                       <button 
-                         onClick={async () => {
-                           await fetch(`/api/admin/lots/${l.id}`, {
-                             method: "POST",
-                             headers: { "Content-Type": "application/json" },
-                             body: JSON.stringify({ status: 'Sold', adminInvoiceStatus: 'Sent' })
-                           });
-                           fetchDashboard();
-                         }}
-                         className="flex-1 py-3 bg-white text-black text-[8px] font-black uppercase tracking-[0.3em] hover:bg-emerald-500 transition-colors"
-                       >
-                         Settle & Invoice
-                       </button>
-                       <button onClick={() => deleteLot(l.id)} className="px-4 py-3 border border-white/10 flex items-center justify-center hover:bg-red-600 transition-colors">
-                          <AlertCircle className="w-4 h-4 text-red-500" />
-                       </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'vetting' && (
-            <div className="space-y-8 md:space-y-12">
-               <div className="space-y-4 border-b border-white/10 pb-8 md:pb-12 text-center md:text-left">
-                  <h2 className="text-[10px] uppercase font-black tracking-[0.4em] md:tracking-[0.6em] text-white/20">Protocol Authorization</h2>
-                  <h3 className="text-4xl md:text-5xl font-bold uppercase tracking-tighter italic leading-none">Bidder Vetting</h3>
-               </div>
-               
-               <div className="space-y-4">
-                  <div className="hidden lg:grid grid-cols-5 p-6 border-b border-white/10 text-[9px] font-black uppercase tracking-widest text-white/20 bg-[#0A0A0A]">
-                     <span>Node Alias</span>
-                     <span>Identity Pulse</span>
-                     <span>Request Time</span>
-                     <span>Status</span>
-                     <span>Actions</span>
-                  </div>
-                  <div className="grid grid-cols-1 gap-4 lg:gap-0 lg:bg-[#0A0A0A] lg:border lg:border-white/10">
-                    {applications.map((app: any) => (
-                      <div key={app.id} className="flex flex-col lg:grid lg:grid-cols-5 gap-6 lg:gap-0 p-6 md:p-8 bg-[#0A0A0A] border lg:border-0 border-white/10 hover:bg-white/[0.02] items-center text-center lg:text-left">
-                        <span className="text-xs font-bold uppercase tracking-widest text-emerald-500 lg:text-white shrink-0">{app.name}</span>
-                        <div className="flex flex-col text-[10px] font-mono text-white/40 break-all px-4 lg:px-0">
-                          <span>{app.email}</span>
-                          <span className="opacity-40">{app.phone}</span>
-                        </div>
-                        <span className="text-[9px] md:text-[10px] font-mono text-white/20 uppercase tracking-tighter">{new Date(app.timestamp).toLocaleString()}</span>
-                        <div className="py-2 lg:py-0">
-                          <span className={cn("px-4 py-1.5 text-[8px] font-black uppercase tracking-[0.2em] md:tracking-widest", app.status === 'Approved' ? 'bg-emerald-500/20 text-emerald-500' : app.status === 'Denied' ? 'bg-red-500/20 text-red-500' : 'bg-white/5 text-white/30')}>
-                            {app.status}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap justify-center lg:justify-start gap-3 w-full lg:w-auto mt-2 lg:mt-0 pt-6 lg:pt-0 border-t lg:border-0 border-white/5">
-                           <button onClick={() => setMessageTarget(app)} className="p-3 border border-white/10 text-white/40 hover:text-white transition-colors">
-                              <MessageSquare className="w-4 h-4" />
-                           </button>
-                           <button onClick={() => vetUser(app.id, 'Approved')} className="flex-1 lg:flex-none px-6 py-3 bg-emerald-500 text-black text-[9px] font-black uppercase tracking-widest hover:bg-emerald-400 transition-colors">Grant Access</button>
-                           <button onClick={() => vetUser(app.id, 'Denied')} className="flex-1 lg:flex-none px-6 py-3 border border-white/10 text-white/40 text-[9px] font-black uppercase tracking-widest hover:bg-red-600 hover:text-white transition-colors">Deny</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-               </div>
-            </div>
-          )}
-
-          {activeTab === 'social' && (
-             <div className="space-y-12">
-               <div className="flex flex-col md:flex-row justify-between md:items-end border-b border-white/10 pb-8 md:pb-12 gap-6 text-center md:text-left">
-                  <div className="space-y-4">
-                    <h2 className="text-[10px] uppercase font-black tracking-[0.6em] text-white/20">Social Proof Ledger</h2>
-                    <h3 className="text-4xl md:text-5xl font-bold uppercase tracking-tighter italic leading-none">History Log</h3>
-                  </div>
-                  <button onClick={() => setNewAllocation({ model: '', price: '', user: '', img: '' })} className="w-full md:w-auto px-8 py-4 bg-white text-black text-[10px] font-black uppercase tracking-[0.4em] hover:bg-neutral-200">
-                    [+] Log Settlement
-                  </button>
-               </div>
-
-               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                 {allocations.map((a: any) => (
-                   <div key={a.id} className="relative group aspect-[9/16] bg-[#0A0A0A] border border-white/10 overflow-hidden">
-                      <img src={a.img} className="w-full h-full object-cover opacity-40 group-hover:opacity-80 transition-opacity" />
-                      <div className="absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-black space-y-4">
-                         <div className="space-y-1">
-                            <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest block">{a.price}</span>
-                            <h5 className="text-lg font-bold uppercase tracking-tighter italic">{a.model}</h5>
-                         </div>
-                         <button onClick={() => deleteAllocation(a.id)} className="w-full py-3 bg-red-900/20 border border-red-500/20 text-red-500 text-[8px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all">Delete Entry</button>
-                      </div>
-                   </div>
-                 ))}
-               </div>
-             </div>
-          )}
-
+              {tab.count !== undefined && (
+                <span className={cn(
+                  "text-xs px-2 py-0.5 rounded-full font-bold",
+                  activeTab === tab.id ? "bg-white/20 text-white" : "bg-slate-800 text-slate-300"
+                )}>{tab.count}</span>
+              )}
+            </button>
+          ))}
+        </nav>
+        
+        <div className="p-4 border-t border-slate-800">
+           <button onClick={() => window.location.reload()} className="w-full flex items-center gap-3 p-3 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-all font-semibold text-sm">
+             <LogOut className="w-5 h-5" /> Sign Out
+           </button>
         </div>
+      </aside>
 
-        <AnimatePresence>
-          {messageTarget && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[250] flex items-center justify-center p-6 bg-black/95 backdrop-blur-3xl">
-               <div className="w-full max-w-lg bg-[#0A0A0A] border border-white/10 p-12 space-y-12 shadow-2xl relative">
-                  <button onClick={() => setMessageTarget(null)} className="absolute top-8 right-8 text-[9px] text-white/20 hover:text-white uppercase tracking-widest">[X]</button>
-                  <div className="space-y-4">
-                    <h3 className="text-3xl font-bold uppercase tracking-tighter italic">Transmit Packet</h3>
-                    <p className="text-[10px] uppercase tracking-[0.4em] text-white/20 font-black">Target Node: {messageTarget.email}</p>
-                  </div>
-                  
-                  <div className="space-y-8">
-                     <div className="space-y-2">
-                        <label className="text-[9px] uppercase tracking-widest text-white/20 ml-2">Packet Header</label>
-                        <input value={msgContent.title} onChange={e => setMsgContent({...msgContent, title: e.target.value})} className="w-full bg-black border border-white/10 p-5 text-xs font-mono uppercase tracking-widest focus:border-emerald-500 transition-all outline-none text-white" placeholder="TRANSMISSION_SUBJECT" />
-                     </div>
-                     <div className="space-y-2">
-                        <label className="text-[9px] uppercase tracking-widest text-white/20 ml-2">Internal Payload</label>
-                        <textarea value={msgContent.message} onChange={e => setMsgContent({...msgContent, message: e.target.value})} className="w-full h-40 bg-black border border-white/10 p-6 text-xs font-mono uppercase tracking-widest focus:border-emerald-500 transition-all outline-none resize-none text-white" placeholder="ENCRYPT_DATA_HERE..." />
-                     </div>
-                     <div className="flex flex-wrap gap-3">
-                        {['info', 'success', 'warning', 'alert'].map(type => (
-                          <button key={type} onClick={() => setMsgContent({...msgContent, type})} className={cn("px-5 py-2.5 text-[8px] font-black uppercase tracking-widest border transition-all", msgContent.type === type ? "bg-white text-black border-white" : "border-white/10 text-white/20 hover:text-white hover:border-white/40")}>{type}</button>
-                        ))}
-                     </div>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row gap-4 pt-6">
-                     <button onClick={sendDirectMessage} className="flex-[2] py-6 bg-emerald-500 text-black text-[10px] font-black uppercase tracking-[0.6em] hover:bg-emerald-400 transition-all">Establish Transmission</button>
-                  </div>
+      {/* Main Content Workspace */}
+      <main className="flex-1 flex flex-col min-h-screen overflow-hidden text-slate-900">
+         <header className="h-20 bg-white border-b border-slate-200 px-8 flex items-center justify-between">
+            <div>
+               <h1 className="text-xl font-bold capitalize flex items-center gap-2">
+                  <Home className="w-5 h-5 text-slate-400" /> / {activeTab} Control
+               </h1>
+            </div>
+            <div className="flex items-center gap-4">
+               <div className="flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Systems Online
                </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+            </div>
+         </header>
+
+         <div className="flex-1 overflow-y-auto p-8">
+            <AnimatePresence mode="wait">
+               
+               {activeTab === 'overview' && (
+                 <motion.div key="overview" initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}} className="space-y-8">
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                       <div className="enterprise-card p-6 border-l-[4px] border-l-blue-600 flex flex-col justify-between h-36">
+                          <div className="text-slate-500 font-semibold text-sm uppercase tracking-wider flex items-center gap-2">
+                             <Database className="w-4 h-4" /> Active Lots
+                          </div>
+                          <div className="text-4xl font-display font-bold text-slate-900">{lotArray.length}</div>
+                       </div>
+                       <div className="enterprise-card p-6 border-l-[4px] border-l-emerald-500 flex flex-col justify-between h-36">
+                          <div className="text-slate-500 font-semibold text-sm uppercase tracking-wider flex items-center gap-2">
+                             <TrendingUp className="w-4 h-4" /> Current Volume
+                          </div>
+                          <div className="text-4xl font-display font-bold text-emerald-600">{formatCurrency(totalVolume)}</div>
+                       </div>
+                       <div className="enterprise-card p-6 border-l-[4px] border-l-purple-500 flex flex-col justify-between h-36">
+                          <div className="text-slate-500 font-semibold text-sm uppercase tracking-wider flex items-center gap-2">
+                             <Users className="w-4 h-4" /> Pending Vetting
+                          </div>
+                          <div className="text-4xl font-display font-bold text-purple-600">{pendingApps.length}</div>
+                       </div>
+                    </div>
+
+                    <div className="enterprise-card p-6 h-96">
+                       <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                          <TrendingUp className="w-5 h-5 text-slate-400" /> Platform Activity Network
+                       </h3>
+                       <ResponsiveContainer width="100%" height="80%">
+                          <LineChart data={mockChartData}>
+                             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                             <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
+                             <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value/1000}k`} />
+                             <RechartsTooltip 
+                                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                             />
+                             <Line type="monotone" dataKey="bids" stroke="#2563eb" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                          </LineChart>
+                       </ResponsiveContainer>
+                    </div>
+
+                 </motion.div>
+               )}
+
+               {activeTab === 'assets' && (
+                 <motion.div key="assets" initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}} className="space-y-6">
+                    <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                       <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2"><Car className="w-5 h-5"/> Vehicle Inventory</h3>
+                       <div className="flex gap-3">
+                          <label className="enterprise-button border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 cursor-pointer overflow-hidden py-2 px-4 shadow-none">
+                             <input type="file" accept=".csv" className="hidden" onChange={e => {
+                                if (e.target.files?.[0]) handleCsvUpload(e.target.files[0]);
+                             }} />
+                             <div className="flex items-center gap-2">
+                                <DownloadCloud className="w-4 h-4" />
+                                {uploadingCsv ? "UPLOADING..." : "Bulk CSV Upload"}
+                             </div>
+                          </label>
+                          <button onClick={() => setNewLot({ id: `LT-${Math.random().toString(36).substr(2, 6).toUpperCase()}`, name: '', image: '', currentBid: 0, bidCount: 0, expiresAt: new Date(Date.now() + 86400000).toISOString(), specifications: {}, conditionInfo: {}, sellerInfo: {} })} className="enterprise-button enterprise-button-primary py-2 px-4 shadow-none">
+                             <Plus className="w-4 h-4 mr-2" /> Add Vehicle
+                          </button>
+                       </div>
+                    </div>
+                    
+                    {csvStatus && (
+                       <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-xl text-sm font-semibold">
+                          {csvStatus}
+                       </div>
+                    )}
+
+                    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                       <table className="w-full text-left text-sm">
+                          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
+                             <tr>
+                                <th className="p-4">Lot Node</th>
+                                <th className="p-4">Title / Name</th>
+                                <th className="p-4">Current Value</th>
+                                <th className="p-4">Time Left</th>
+                                <th className="p-4 text-center">Settings</th>
+                             </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                             {lotArray.length > 0 ? (
+                                lotArray.map((lot: any) => (
+                                  <tr key={lot.id} className="hover:bg-slate-50/80 transition-colors group">
+                                     <td className="p-4 font-mono font-bold text-slate-700">{lot.id}</td>
+                                     <td className="p-4 font-semibold text-slate-900">{lot.name}</td>
+                                     <td className="p-4 text-emerald-600 font-bold">{formatCurrency(lot.currentBid)}</td>
+                                     <td className="p-4 text-slate-500 font-mono text-xs">
+                                        {new Date(lot.expiresAt).getTime() < Date.now() ? <span className="text-red-500">EXPIRED</span> : new Date(lot.expiresAt).toLocaleString()}
+                                     </td>
+                                     <td className="p-4">
+                                        <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                           <button onClick={() => setEditingLot(lot)} className="p-1.5 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100"><LinkIcon className="w-4 h-4"/></button>
+                                           <button onClick={() => deleteLot(lot.id)} className="p-1.5 bg-red-50 text-red-600 rounded-md hover:bg-red-100"><Trash2 className="w-4 h-4"/></button>
+                                        </div>
+                                     </td>
+                                  </tr>
+                                ))
+                             ) : (
+                                <tr>
+                                   <td colSpan={5} className="p-12 text-center text-slate-400 font-medium">No active vehicles found in registry.</td>
+                                </tr>
+                             )}
+                          </tbody>
+                       </table>
+                    </div>
+                 </motion.div>
+               )}
+
+               {activeTab === 'vetting' && (
+                 <motion.div key="vetting" initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}} className="space-y-6">
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                       <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2"><Users className="w-5 h-5"/> Application Queue</h3>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                       {applications.filter(a => a.status === 'pending').length > 0 ? (
+                          applications.filter(a => a.status === 'pending').map(app => (
+                             <div key={app.email} className="enterprise-card p-6 border-t-[4px] border-t-purple-500 flex flex-col">
+                                <div className="flex justify-between items-start mb-4">
+                                   <div>
+                                      <h4 className="font-bold text-slate-900">{app.name}</h4>
+                                      <p className="text-xs font-mono text-slate-500 mt-1">{app.email}</p>
+                                   </div>
+                                   <div className="bg-yellow-100 text-yellow-800 text-[10px] font-bold uppercase px-2 py-1 rounded">Pending</div>
+                                </div>
+                                <div className="space-y-2 text-sm text-slate-600 mb-6 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                   <div className="flex justify-between"><span className="text-slate-400 font-semibold">Entity:</span> {app.businessName || 'Individual'}</div>
+                                   <div className="flex justify-between"><span className="text-slate-400 font-semibold">Reg Phone:</span> {app.phone}</div>
+                                </div>
+                                <div className="mt-auto flex gap-3">
+                                   <button onClick={() => updateAppStatus(app.id, 'active')} className="flex-1 enterprise-button enterprise-button-primary shadow-none py-2 px-0 text-sm">Approve</button>
+                                   <button onClick={() => updateAppStatus(app.id, 'rejected')} className="flex-1 bg-white border border-red-200 text-red-600 font-bold rounded-lg hover:bg-red-50 py-2">Deny</button>
+                                </div>
+                             </div>
+                          ))
+                       ) : (
+                          <div className="col-span-full enterprise-card p-12 text-center text-slate-400 font-medium border-dashed border-2 bg-slate-50/50 shadow-none">
+                             Application queue is empty.
+                          </div>
+                       )}
+                    </div>
+                 </motion.div>
+               )}
+
+               {activeTab === 'escrow' && (
+                 <motion.div key="escrow" initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}} className="space-y-6">
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                       <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2"><CreditCard className="w-5 h-5"/> Escrow & Funding Management</h3>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                       {/* Funding Requests */}
+                       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                          <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                             <h4 className="font-bold text-slate-800 flex items-center gap-2">Funding Requests</h4>
+                             <span className="bg-orange-100 text-orange-800 text-[10px] font-bold uppercase rounded px-2 py-0.5">{escrowRequests.filter(r => r.status === 'pending').length} Pending</span>
+                          </div>
+                          <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto">
+                             {escrowRequests.filter(r => r.status === 'pending').length > 0 ? (
+                                escrowRequests.filter(r => r.status === 'pending').map(req => (
+                                  <div key={req.id} className="p-4 px-6 flex justify-between items-center bg-white hover:bg-slate-50 transition-colors">
+                                     <div>
+                                        <div className="font-bold text-slate-900">{req.fullname || req.email}</div>
+                                        <div className="text-xs font-medium text-slate-500 mt-1">{req.payment_method} &middot; {new Date(req.created_at).toLocaleDateString()}</div>
+                                     </div>
+                                     <div className="flex items-center gap-4">
+                                        <div className="text-emerald-600 font-bold text-lg">${req.amount.toLocaleString()}</div>
+                                        <div className="flex gap-2">
+                                           <button 
+                                              onClick={() => setInvoiceRequest(req)}
+                                              className="bg-blue-50 text-blue-600 px-3 py-1 rounded text-xs font-bold hover:bg-blue-100"
+                                           >Create Invoice</button>
+                                           <button 
+                                              onClick={async () => {
+                                                await fetch("/api/admin/escrow/reject", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ requestId: req.id }) });
+                                                fetchDashboard();
+                                              }}
+                                              className="bg-red-50 text-red-600 px-3 py-1 rounded text-xs font-bold hover:bg-red-100"
+                                           >Reject</button>
+                                        </div>
+                                     </div>
+                                  </div>
+                                ))
+                             ) : (
+                                <div className="p-8 text-center text-slate-500 text-sm">No pending requests.</div>
+                             )}
+                          </div>
+                       </div>
+
+                       {/* Pending Invoices */}
+                       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                          <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                             <h4 className="font-bold text-slate-800 flex items-center gap-2">Invoices Awaiting Payment</h4>
+                          </div>
+                          <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto">
+                             {escrowInvoices.filter(i => i.status === 'pending').length > 0 ? (
+                                escrowInvoices.filter(i => i.status === 'pending').map(inv => (
+                                  <div key={inv.id} className="p-4 px-6 flex justify-between items-center bg-white hover:bg-slate-50 transition-colors">
+                                     <div>
+                                        <div className="flex items-center gap-2 text-slate-900 font-bold">
+                                           {inv.fullname || inv.email}
+                                        </div>
+                                        <div className="text-xs text-slate-500 font-mono mt-1">{inv.invoice_number}</div>
+                                     </div>
+                                     <div className="text-right">
+                                        <div className="font-bold text-lg">${inv.amount.toLocaleString()}</div>
+                                     </div>
+                                  </div>
+                                ))
+                             ) : (
+                                <div className="p-8 text-center text-slate-500 text-sm">No pending invoices.</div>
+                             )}
+                          </div>
+                       </div>
+                    </div>
+
+                    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                       <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                          <h4 className="font-bold text-slate-800">Master Wallet Ledger</h4>
+                       </div>
+                       <table className="w-full text-left text-sm">
+                          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
+                             <tr>
+                                <th className="p-4">Customer Identity</th>
+                                <th className="p-4">Available (Unlocked)</th>
+                                <th className="p-4">Locked (Bids)</th>
+                                <th className="p-4">Pending</th>
+                                <th className="p-4">Modify</th>
+                             </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                             {escrowWallets.length > 0 ? (
+                                escrowWallets.map(w => (
+                                  <tr key={w.id} className="hover:bg-slate-50/80 transition-colors">
+                                     <td className="p-4">
+                                        <div className="font-bold text-slate-900">{w.fullname}</div>
+                                        <div className="text-xs font-mono text-slate-500">{w.email}</div>
+                                     </td>
+                                     <td className="p-4 font-bold text-emerald-600">${w.available_balance.toLocaleString()}</td>
+                                     <td className="p-4 font-bold text-slate-600">${w.locked_balance.toLocaleString()}</td>
+                                     <td className="p-4 font-bold text-slate-600">${w.pending_balance.toLocaleString()}</td>
+                                     <td className="p-4 flex gap-2">
+                                        <button onClick={async () => {
+                                           await fetch("/api/admin/escrow/adjust", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ walletId: w.id, amount: 10000, type: 'increase' }) });
+                                           fetchDashboard();
+                                        }} className="px-2 py-1 bg-slate-100 text-slate-700 font-bold text-xs rounded hover:bg-slate-200">+10k</button>
+                                        <button onClick={async () => {
+                                           await fetch("/api/admin/escrow/adjust", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ walletId: w.id, amount: 100000, type: 'increase' }) });
+                                           fetchDashboard();
+                                        }} className="px-2 py-1 bg-slate-100 text-slate-700 font-bold text-xs rounded hover:bg-slate-200">+100k</button>
+                                     </td>
+                                  </tr>
+                                ))
+                             ) : (
+                                <tr>
+                                   <td colSpan={5} className="p-12 text-center text-slate-400 font-medium">No wallets provisioned yet.</td>
+                                </tr>
+                             )}
+                          </tbody>
+                       </table>
+                    </div>
+                 </motion.div>
+               )}
+
+            </AnimatePresence>
+         </div>
       </main>
 
-      {/* Editor Modal */}
+      {/* Editor Modal for Lots */}
       <AnimatePresence>
         {(editingLot || newLot) && (
-          <motion.div 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            exit={{ opacity: 0 }} 
-            className="fixed inset-0 z-[200] bg-black/98 backdrop-blur-3xl overflow-y-auto p-4 md:p-12 pb-24"
-          >
-            <div className="min-h-full flex items-center justify-center">
-              <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-[#0A0A0A] border border-white/10 p-8 md:p-16 w-full max-w-2xl space-y-10 md:space-y-12">
-                 <div className="flex justify-between items-start gap-4">
-                    <h3 className="text-2xl md:text-4xl font-bold uppercase tracking-tighter italic leading-none">{newLot ? 'Deploy New Node' : 'Edit Lot Node'}</h3>
-                    <button onClick={() => { setEditingLot(null); setNewLot(null); }} className="text-[8px] md:text-[9px] font-black text-white/20 uppercase tracking-[0.3em] mt-1 shrink-0">[X] EXIT</button>
-                 </div>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-                    <AdminInput label="Asset ID (Slug)" value={newLot?.id || editingLot?.id} onChange={(v:any) => newLot ? setNewLot({...newLot, id: v}) : setEditingLot({...editingLot, id: v})} />
-                    <AdminInput label="Asset Name" value={newLot?.name || editingLot?.name} onChange={(v:any) => newLot ? setNewLot({...newLot, name: v}) : setEditingLot({...editingLot, name: v})} />
-                    <AdminInput label="Start/Floor Price ($)" value={newLot?.floor || editingLot?.floor} onChange={(v:any) => newLot ? setNewLot({...newLot, floor: Number(v)}) : setEditingLot({...editingLot, floor: Number(v)})} />
-                    <AdminInput label="Target Ceiling ($)" value={newLot?.ceiling || editingLot?.ceiling} onChange={(v:any) => newLot ? setNewLot({...newLot, ceiling: Number(v)}) : setEditingLot({...editingLot, ceiling: Number(v)})} />
-                    <div className="space-y-3">
-                      <label className="text-[8px] uppercase tracking-[0.3em] md:tracking-[0.4em] text-white/20">Velocity Level</label>
-                      <select value={newLot?.velocity || editingLot?.velocity} onChange={(e) => newLot ? setNewLot({...newLot, velocity: e.target.value}) : setEditingLot({...editingLot, velocity: e.target.value})} className="w-full bg-black border border-white/10 p-4 text-[10px] md:text-xs font-mono uppercase text-white outline-none">
-                         <option value="Static">Static</option>
-                         <option value="Low">Low Pulse</option>
-                         <option value="Medium">Medium Flow</option>
-                         <option value="High">High Velocity</option>
-                      </select>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} className="bg-white rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+              <div className="bg-slate-50 border-b border-slate-200 p-6 flex justify-between items-center">
+                 <h3 className="font-bold text-xl text-slate-900">{editingLot ? `Edit Node [${editingLot.id}]` : 'Provision New Vehicle'}</h3>
+                 <button onClick={() => {setEditingLot(null); setNewLot(null)}} className="text-slate-400 hover:text-slate-700"><LogOut className="w-5 h-5 rotate-45" /></button>
+              </div>
+              <div className="p-6 overflow-y-auto flex-1 space-y-6">
+                {(editingLot || newLot) && (() => {
+                  const lot = editingLot || newLot;
+                  const setLot = editingLot ? setEditingLot : setNewLot;
+                  return (
+                    <div className="grid grid-cols-2 gap-6">
+                      <div className="col-span-2 space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">Title / Name</label>
+                        <input type="text" className="enterprise-input" value={lot.name} onChange={e => setLot({...lot, name: e.target.value})} placeholder="e.g. 2021 BMW M4 Comp" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">Primary Image URL</label>
+                        <input type="text" className="enterprise-input" value={lot.image || ''} onChange={e => setLot({...lot, image: e.target.value})} placeholder="https://..." />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">Current Bid Base</label>
+                        <input type="number" className="enterprise-input" value={lot.currentBid} onChange={e => setLot({...lot, currentBid: Number(e.target.value)})} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">Expiration Runtime</label>
+                        <input type="datetime-local" className="enterprise-input" value={lot.expiresAt ? new Date(lot.expiresAt).toISOString().slice(0,16) : ''} onChange={e => setLot({...lot, expiresAt: new Date(e.target.value).toISOString()})} />
+                      </div>
                     </div>
-                    <AdminInput label="Node Expiry (ISO Date)" value={newLot?.expiresAt || editingLot?.expiresAt} onChange={(v:any) => newLot ? setNewLot({...newLot, expiresAt: v}) : setEditingLot({...editingLot, expiresAt: v})} />
-                    <div className="md:col-span-2">
-                      <AdminInput label="Asset Image URL" value={newLot?.image || editingLot?.image} onChange={(v:any) => newLot ? setNewLot({...newLot, image: v}) : setEditingLot({...editingLot, image: v})} />
-                    </div>
-                 </div>
-                 <div className="flex flex-col sm:flex-row gap-3 md:gap-4 pt-4">
-                   <button onClick={() => { setEditingLot(null); setNewLot(null); }} className="order-2 sm:order-1 flex-1 py-6 md:py-8 border border-white/10 text-white/20 text-[10px] font-black uppercase tracking-[0.6em] hover:bg-red-600 hover:text-white transition-all">
-                      Abort Protocol
-                   </button>
-                   <button onClick={() => saveLot(newLot || editingLot, !!newLot)} className="order-1 sm:order-2 flex-[2] py-6 md:py-8 bg-white text-black text-[10px] font-black uppercase tracking-[0.6em] hover:bg-neutral-200">
-                      Update Ledger
-                   </button>
-                 </div>
-              </motion.div>
-            </div>
+                  )
+                })()}
+              </div>
+              <div className="p-6 bg-slate-50 border-t border-slate-200 flex gap-4">
+                 <button onClick={() => {setEditingLot(null); setNewLot(null)}} className="flex-1 enterprise-button enterprise-button-outline py-2">Cancel</button>
+                 <button onClick={() => saveLot(editingLot || newLot, !!newLot)} className="flex-1 enterprise-button enterprise-button-primary py-2">Save Registry Node</button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
 
-        {newAllocation && (
-          <motion.div 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            exit={{ opacity: 0 }} 
-            className="fixed inset-0 z-[200] bg-black/98 backdrop-blur-3xl overflow-y-auto p-4 pb-24"
-          >
-             <div className="min-h-full flex items-center justify-center">
-               <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-[#0A0A0A] border border-white/10 p-8 md:p-16 w-full max-w-md space-y-10 md:space-y-12">
-                 <div className="flex justify-between items-start">
-                    <h3 className="text-2xl md:text-4xl font-bold uppercase tracking-tighter italic">Log Settlement</h3>
-                    <button onClick={() => setNewAllocation(null)} className="text-[9px] font-black text-white/20 uppercase tracking-widest">[X] CLOSE</button>
-                 </div>
-                 <div className="space-y-6">
-                    <AdminInput label="Asset Plate" value={newAllocation.model} onChange={(v:any) => setNewAllocation({...newAllocation, model: v})} />
-                    <AdminInput label="Settlement Price" value={newAllocation.price} onChange={(v:any) => setNewAllocation({...newAllocation, price: v})} />
-                    <AdminInput label="Winning Node" value={newAllocation.user} onChange={(v:any) => setNewAllocation({...newAllocation, user: v})} />
-                    <AdminInput label="Media URL" value={newAllocation.img} onChange={(v:any) => setNewAllocation({...newAllocation, img: v})} />
-                 </div>
-                 <button onClick={() => manageAllocation(newAllocation)} className="w-full py-6 bg-white text-black text-[10px] font-black uppercase tracking-[0.6em] hover:bg-neutral-200">
-                    Register Historical Record
-                 </button>
-               </motion.div>
-             </div>
+        {invoiceRequest && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} className="bg-white rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+              <div className="bg-slate-50 border-b border-slate-200 p-6 flex justify-between items-center">
+                 <h3 className="font-bold text-xl text-slate-900">Create Invoice</h3>
+                 <button onClick={() => setInvoiceRequest(null)} className="text-slate-400 hover:text-slate-700"><LogOut className="w-5 h-5 rotate-45" /></button>
+              </div>
+              <div className="p-6 overflow-y-auto flex-1 space-y-6">
+                 <form id="create-invoice-form" onSubmit={async (e: any) => {
+                    e.preventDefault();
+                    await fetch("/api/admin/escrow/create-invoice", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                         requestId: invoiceRequest.id,
+                         userId: invoiceRequest.user_id,
+                         amount: invoiceRequest.amount,
+                         assigned_account_id: e.target.assigned_account_id.value,
+                         expires_in_mins: e.target.expires_in_mins.value,
+                         notes: e.target.notes.value
+                      })
+                    });
+                    setInvoiceRequest(null);
+                    fetchDashboard();
+                 }}>
+                    <div className="grid grid-cols-1 gap-6">
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">Requested Amount</label>
+                        <input type="text" className="enterprise-input bg-slate-100" value={`$${(invoiceRequest.amount || 0).toLocaleString()}`} readOnly />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">Assign Payment Account</label>
+                        <select name="assigned_account_id" className="enterprise-input" required>
+                           <option value="">Select Account...</option>
+                           {invoiceAccounts.map((acc: any) => (
+                             <option key={acc.id} value={acc.id}>{acc.bank_name || acc.crypto_network} - {acc.account_type}</option>
+                           ))}
+                        </select>
+                        {invoiceAccounts.length === 0 && <div className="text-red-500 text-xs mt-1">No accounts added yet. Add via DB.</div>}
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">Expiration Timer (Minutes)</label>
+                        <select name="expires_in_mins" className="enterprise-input" defaultValue="60">
+                           <option value="5">5 Minutes</option>
+                           <option value="15">15 Minutes</option>
+                           <option value="30">30 Minutes</option>
+                           <option value="60">1 Hour</option>
+                           <option value="1440">24 Hours</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">Custom Notes</label>
+                        <textarea name="notes" className="enterprise-input" placeholder="Optional notes..."></textarea>
+                      </div>
+                    </div>
+                 </form>
+              </div>
+              <div className="p-6 bg-slate-50 border-t border-slate-200 flex gap-4">
+                 <button onClick={() => setInvoiceRequest(null)} className="flex-1 enterprise-button enterprise-button-outline py-2">Cancel</button>
+                 <button type="submit" form="create-invoice-form" className="flex-1 enterprise-button enterprise-button-primary py-2 bg-blue-600 hover:bg-blue-700 hover:border-blue-600">Send Invoice →</button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
+
       </AnimatePresence>
-    </div>
-  );
-}
-
-function AdminInput({ label, value, onChange, isPassword }: any) {
-  return (
-    <div className="space-y-3">
-      <label className="text-[8px] uppercase tracking-[0.4em] text-white/20 ml-1 block">{label}</label>
-      <input 
-        type={isPassword ? "password" : "text"} 
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="w-full bg-black border border-white/10 p-5 font-mono text-xs text-white focus:border-emerald-500/40 outline-none transition-colors uppercase"
-      />
-    </div>
-  );
-}
-
-function StatCard({ icon, label, value }: any) {
-  return (
-    <div className="p-8 border border-white/10 bg-[#0A0A0A] flex items-center gap-8 group hover:border-white/30 transition-colors cursor-default">
-      <div className="w-12 h-12 flex items-center justify-center bg-white/5 border border-white/10 group-hover:bg-white text-white group-hover:text-black transition-all">
-        {React.cloneElement(icon, { size: 20 })}
-      </div>
-      <div>
-        <span className="text-[8px] uppercase tracking-[0.4em] text-white/20 block mb-1">{label}</span>
-        <span className="text-3xl font-bold font-mono tracking-tighter text-white">{value}</span>
-      </div>
     </div>
   );
 }

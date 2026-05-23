@@ -1,0 +1,255 @@
+/* styles.css
+   Luxury Dark Styling Theme for Apex Strategic Holdings Dashboard
+   Designed for High-Contrast Premium Display (Swiss/Modern Style) */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,850;1,350&family=JetBrains+Mono:wght@300;400;500;700&display=swap');
+
+:root {
+  --bg-primary: #050505;
+  --bg-secondary: #0A0A0A;
+  --bg-tertiary: #121212;
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-accent: rgba(212, 175, 55, 0.2);
+  --accent-gold: #D4AF37;
+  --accent-gold-hover: #F3E5AB;
+  --text-primary: #FFFFFF;
+  --text-secondary: rgba(255, 255, 255, 0.6);
+  --text-muted: rgba(255, 255, 255, 0.3);
+  --emerald-glowing: #10B981;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Typography Helpers */
+.mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+}
+
+.text-gold {
+  color: var(--accent-gold);
+}
+
+.heading-hero {
+  font-size: 5rem;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: -0.04em;
+  line-height: 0.8;
+  font-style: italic;
+}
+
+/* Luxury Card Layouts */
+.card-apex {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  padding: 2rem;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+.card-apex:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
+}
+
+/* Bid Stream Animation */
+@keyframes pulseGlow {
+  0% { transform: scale(0.98); opacity: 0.8; }
+  50% { transform: scale(1.02); opacity: 1; }
+  100% { transform: scale(0.98); opacity: 0.8; }
+}
+
+.glow-emerald {
+  animation: pulseGlow 2s infinite ease-in-out;
+}
+
+/* Detail Portal Sidebar Hierarchy Layout */
+.showroom-container {
+  display: grid;
+  grid-template-columns: 280px 1fr 340px;
+  gap: 1.5rem;
+  width: 100%;
+  max-w: 1600px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+@media (max-w: 1200px) {
+  .showroom-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Data-dense Sidebar */
+.data-sidebar {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Image gallery container */
+.gallery-viewport {
+  width: 100%;
+  aspect-ratio: 16/10;
+  background-color: #000;
+  border: 1px solid var(--border-color);
+  position: relative;
+  overflow: hidden;
+}
+
+.gallery-viewport img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Right Detail Action Panel */
+.action-panel {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-accent);
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  box-shadow: 0 20px 40px rgba(212, 175, 55, 0.03);
+}
+
+/* Smooth Input Form styling */
+.input-premium {
+  width: 100%;
+  background-color: #000;
+  border: 1px solid var(--border-color);
+  padding: 1.25rem;
+  color: #fff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.3s ease;
+}
+
+.input-premium:focus {
+  border-color: var(--accent-gold);
+}
+
+/* Gated Clearance Sign-In Style */
+.gated-gate {
+  width: 100%;
+  max-width: 480px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  padding: 3.5rem;
+  margin: auto;
+  box-shadow: 0 50px 100px rgba(0,0,0,0.8);
+}
+
+/* Button UI with gold-sand reflections */
+.button-primary {
+  display: block;
+  width: 100%;
+  background-color: #ffffff;
+  color: #000000;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.4em;
+  padding: 1.5rem;
+  border: none;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.button-primary:hover {
+  background-color: var(--accent-gold);
+}
+
+/* Upload Dropzone styling */
+.dropzone {
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  background-color: rgba(255,255,255,0.015);
+  padding: 3rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.dropzone.hovering, .dropzone:hover {
+  border-color: var(--accent-gold);
+  background-color: rgba(212, 175, 55, 0.03);
+}
+
+/* Animations for updating metrics */
+.pulse-up {
+  transition: transform 0.2s ease-out;
+  animation: keyframePulseUp 0.35s ease-out;
+}
+
+@keyframes keyframePulseUp {
+  0% { transform: scale(1); color: var(--emerald-glowing); }
+  50% { transform: scale(1.04); }
+  100% { transform: scale(1); }
+}
+
+/* Switch styling for administrative toggles */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 24px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider-knob {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255,255,255,0.1);
+  transition: .4s;
+  border-radius: 24px;
+}
+
+.slider-knob:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .slider-knob {
+  background-color: var(--emerald-glowing);
+}
+
+input:checked + .slider-knob:before {
+  transform: translateX(24px);
+}
