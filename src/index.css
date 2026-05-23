@@ -1,6 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
+@variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
@@ -23,7 +25,7 @@
     -moz-osx-font-smoothing: grayscale;
   }
   body {
-    @apply font-sans antialiased bg-slate-50 text-slate-900 selection:bg-blue-600/20 selection:text-blue-900;
+    @apply font-sans antialiased bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 selection:bg-blue-600/20 selection:text-blue-900;
     overscroll-behavior-y: none;
   }
 }
@@ -38,7 +40,7 @@
 
 @layer components {
   .enterprise-card {
-    @apply bg-white border border-slate-200/60 shadow-sm rounded-xl overflow-hidden transition-all hover:shadow-md;
+    @apply bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 shadow-sm rounded-xl overflow-hidden transition-all hover:shadow-md;
   }
   .enterprise-button {
     @apply inline-flex items-center justify-center px-6 py-3 font-semibold rounded-lg transition-all active:scale-95;
@@ -47,13 +49,13 @@
     @apply bg-blue-700 text-white hover:bg-blue-800 shadow-md shadow-blue-700/20;
   }
   .enterprise-button-outline {
-    @apply border-2 border-slate-200 bg-white text-slate-700 hover:border-blue-600 hover:text-blue-700;
+    @apply border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-blue-600 hover:text-blue-700 dark:hover:text-blue-400;
   }
   .enterprise-input {
-    @apply w-full bg-slate-50 border border-slate-200 p-3 rounded-lg text-sm transition-all focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20;
+    @apply w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 p-3 rounded-lg text-sm transition-all focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-slate-900 dark:text-slate-100;
   }
   .glass-panel {
-    @apply bg-white/80 backdrop-blur-md border border-slate-200/50 shadow-[0_8px_30px_rgb(0,0,0,0.04)];
+    @apply bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 shadow-[0_8px_30px_rgb(0,0,0,0.04)];
   }
 }
 
