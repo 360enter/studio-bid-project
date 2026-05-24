@@ -182,6 +182,7 @@ try { sqlite.exec("ALTER TABLE platform_users ADD COLUMN profile_image TEXT;"); 
 try { sqlite.exec("ALTER TABLE platform_users ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP;"); } catch (err: any) {}
 try { sqlite.exec("ALTER TABLE platform_users ADD COLUMN last_login DATETIME;"); } catch (err: any) {}
 try { sqlite.exec("ALTER TABLE platform_users ADD COLUMN verification_status TEXT DEFAULT 'unverified';"); } catch (err: any) {}
+try { sqlite.exec("ALTER TABLE escrow_wallets ADD COLUMN is_frozen INTEGER DEFAULT 0;"); } catch (err: any) {}
 
 // Migrate old data safely
 try {

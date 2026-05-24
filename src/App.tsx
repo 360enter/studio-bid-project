@@ -16,57 +16,82 @@ import { Locations, HelpCenter, HowToBuy, Shipping, ContactUs, AboutUs, Investor
 
 function AuthValidator({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
-  const location = useLocation();
   const [isValidating, setIsValidating] = useState(true);
 
   useEffect(() => {
+    let isActive = true;
     const validateSession = async () => {
       const userStr = localStorage.getItem('apex_user');
       if (!userStr) {
-        setIsValidating(false);
+        if (isActive) setIsValidating(false);
         return;
       }
       
       try {
         const user = JSON.parse(userStr);
+        if (!user || !user.id) {
+          localStorage.removeItem('apex_user');
+          window.dispatchEvent(new Event('storage'));
+          if (isActive) setIsValidating(false);
+          return;
+        }
+
+        // 3 seconds maximum timeout fallback protection
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          controller.abort();
+        }, 3000);
+
         const res = await fetch("/api/auth/me", {
            method: "POST",
            headers: { "Content-Type": "application/json" },
-           body: JSON.stringify({ id: user.id })
+           body: JSON.stringify({ id: user.id }),
+           signal: controller.signal
         });
+        clearTimeout(timeoutId);
         
         if (res.ok) {
            const data = await res.json();
-           console.log(`[ROUTING] Route access attempt by ID: ${data.user.id}, Role check result: ${data.user.role}, Status: ${data.user.status}`);
-           
-           if (data.user.status !== 'active') {
-             console.log(`[ROUTING] Invalid status detected (${data.user.status}), logging out.`);
-             localStorage.removeItem('apex_user');
-             window.dispatchEvent(new Event('storage'));
-             navigate('/');
-           } else {
-             // Sync latest data
-             localStorage.setItem('apex_user', JSON.stringify(data.user));
-             window.dispatchEvent(new Event('storage'));
+           if (data.success && data.user) {
+              const ustatus = (data.user.status || '').toLowerCase();
+              console.log(`[ROUTING] Route access validated for ID: ${data.user.id}, Status: ${ustatus}`);
+              
+              // Standardize status for the local state representation
+              localStorage.setItem('apex_user', JSON.stringify({ ...data.user, status: data.user.status }));
+              window.dispatchEvent(new Event('storage'));
            }
         } else {
-           // Invalid session entirely
-           console.log(`[ROUTING] Invalid session, logging out.`);
+           console.log(`[ROUTING] Invalid status or credentials, session cleared.`);
            localStorage.removeItem('apex_user');
            window.dispatchEvent(new Event('storage'));
            navigate('/');
         }
       } catch (err) {
-        console.error("Session validation failed");
+        console.error("Session validation failed/aborted during check:", err);
       } finally {
-        setIsValidating(false);
+        if (isActive) {
+          setIsValidating(false);
+        }
       }
     };
     
     validateSession();
-  }, [navigate, location.pathname]);
+    return () => {
+      isActive = false;
+    };
+  }, [navigate]); // Run once on mount!
 
-  if (isValidating) return <div className="min-h-screen flex items-center justify-center text-slate-500 font-medium">Loading session...</div>;
+  if (isValidating) {
+    return (
+       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 text-slate-300 select-none font-sans">
+         <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center animate-pulse mb-4 shadow-lg shadow-blue-600/30">
+           <span className="text-white font-bold text-2xl">B</span>
+         </div>
+         <div className="text-sm font-semibold tracking-wider font-mono animate-pulse text-blue-500 uppercase">Synchronizing Security Session...</div>
+         <span className="text-[10px] text-slate-600 font-mono mt-1 tracking-widest uppercase">Apex Secure Ingress &bull; Bid.Cars</span>
+       </div>
+    );
+  }
   return <>{children}</>;
 }
 

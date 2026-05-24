@@ -288,6 +288,23 @@ async function startServer() {
     const { lotId, amount, email } = req.body;
     if (!lots[lotId]) return res.status(404).json({ error: "Node not found" });
 
+    if (email) {
+      const user = sqlite.prepare(`
+        SELECT u.*, w.is_frozen 
+        FROM platform_users u 
+        LEFT JOIN escrow_wallets w ON u.id = w.user_id 
+        WHERE u.email = ?
+      `).get(email.toLowerCase()) as any;
+      if (user) {
+        if (user.account_status !== 'active') {
+          return res.status(403).json({ error: "Bidding blocked: Account is currently pending manual admin clearance." });
+        }
+        if (user.is_frozen === 1) {
+          return res.status(403).json({ error: "Bidding blocked: Your Escrow Wallet is currently frozen by administrators." });
+        }
+      }
+    }
+
     lots[lotId].currentBid = amount;
     const bidRec = { 
       id: Math.random().toString(16).slice(2), 
@@ -728,6 +745,18 @@ async function startServer() {
   app.get("/api/escrow/wallet/:userId", (req, res) => {
     try {
       const { userId } = req.params;
+      
+      // Auto-expire outdated pending invoices on-demand
+      try {
+        sqlite.prepare(`
+          UPDATE customer_invoices 
+          SET status = 'expired' 
+          WHERE status = 'pending' AND expires_at < ?
+        `).run(new Date().toISOString());
+      } catch (expErr: any) {
+        console.error("Auto-expiration error in sqlite:", expErr.message);
+      }
+
       let wallet = sqlite.prepare('SELECT * FROM escrow_wallets WHERE user_id = ?').get(userId) as any;
       
       if (!wallet) {
@@ -1114,15 +1143,26 @@ async function startServer() {
 
   app.get("/api/admin/applications", async (req, res) => {
     try {
-      const records = sqlite.prepare('SELECT * FROM platform_users').all();
+      const records = sqlite.prepare(`
+        SELECT u.*, w.available_balance, w.is_frozen 
+        FROM platform_users u
+        LEFT JOIN escrow_wallets w ON u.id = w.user_id
+        ORDER BY u.created_at DESC
+      `).all() as any[];
+
       return res.json(records.map((r: any) => ({
         id: r.id, 
         uid: r.id,
         name: r.fullname, 
         email: r.email, 
         phone: r.phone, 
+        country: r.country || 'N/A',
+        role: r.role || 'customer',
         status: r.account_status || (r.is_approved === 1 ? 'active' : 'pending'),
-        deposit_balance: r.deposit_balance,
+        kyc_status: r.verification_status || 'unverified',
+        deposit_balance: r.deposit_balance || 0,
+        wallet_balance: r.available_balance || 0,
+        is_frozen: r.is_frozen === 1,
         timestamp: r.created_at
       })));
     } catch (err: any) {
@@ -1132,17 +1172,60 @@ async function startServer() {
 
   app.post("/api/admin/applications/vet", async (req, res) => {
     const { id, status } = req.body;
+    const finalStatus = (status === 'approved' || status === 'active') ? 'active' : status;
+    const approvedVal = finalStatus === 'active' ? 1 : 0;
     
-    console.log(`[APPROVAL] admin approval request received for ID: ${id} with status: ${status}`);
+    console.log(`[APPROVAL] admin vetting request for ID: ${id} to status: ${finalStatus}`);
     
     try {
-      const approvedVal = status === "active" ? 1 : 0;
-      sqlite.prepare('UPDATE platform_users SET is_approved = ?, account_status = ? WHERE id = ?').run(approvedVal, status, id);
-      console.log(`[APPROVAL] DB update result: successful`);
+      sqlite.prepare('UPDATE platform_users SET is_approved = ?, account_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(approvedVal, finalStatus, id);
       
       const updatedUser = sqlite.prepare('SELECT * FROM platform_users WHERE id = ?').get(id) as any;
-      console.log(`[APPROVAL] new user status: ${updatedUser.account_status}`);
       
+      // Auto-trigger a real-time notification
+      const notifId = `notif_${Math.random().toString(36).substring(7)}`;
+      let statusMsg = `Your account status has been updated to: ${finalStatus.toUpperCase()}`;
+      if (finalStatus === 'active') {
+         statusMsg = `Clearance Granted: Your Apex Bid.Cars Pro account has been cleared and approved. Bidding permission is active.`;
+      } else if (finalStatus === 'rejected') {
+         statusMsg = `Account Review Notice: Your application is declined. Please contact support.`;
+      } else if (finalStatus === 'suspended') {
+         statusMsg = `Account Review Notice: Your access has been temporarily suspended due to review.`;
+      } else if (finalStatus === 'banned') {
+         statusMsg = `Security Alert: Your account has been banned.`;
+      }
+      
+      sqlite.prepare(`
+        INSERT INTO notification_logs (id, user_id, type, message, delivered)
+        VALUES (?, ?, ?, ?, 0)
+      `).run(notifId, id, finalStatus === 'active' ? 'success' : 'alert', statusMsg);
+      
+      // Real-time WebSocket broadcast to wake up active components
+      broadcast({
+        type: "status_update",
+        userId: id,
+        status: finalStatus,
+        notification: {
+          id: notifId,
+          user_id: id,
+          type: finalStatus === 'active' ? 'success' : 'alert',
+          message: statusMsg,
+          created_at: new Date().toISOString()
+        }
+      });
+      
+      // Send Discord Alert if status is active
+      if (finalStatus === 'active') {
+        const TARGET_DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1504875536982479008/m_GNr9NTjzW53XW6PfOtX9Hf0Cv2--SAdysZdGeWbrnp2r4E7T0bHbeNurIu08OXqnu8";
+        fetch(TARGET_DISCORD_WEBHOOK, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: `✅ **APEX ACCESS CLEARED**: User **${updatedUser.fullname}** (${updatedUser.email}) is approved and active in Bid.Cars Pro.`
+          })
+        }).catch(() => {});
+      }
+
       return res.json({ 
         success: true, 
         user: {
@@ -1156,7 +1239,7 @@ async function startServer() {
         } 
       });
     } catch (err: any) {
-      console.log(`[APPROVAL] DB update result: failed - ${err.message}`);
+      console.log(`[APPROVAL] Vet status update error: ${err.message}`);
       res.status(500).json({ error: err.message });
     }
   });
@@ -1166,6 +1249,141 @@ async function startServer() {
     try {
       sqlite.prepare('UPDATE platform_users SET deposit_balance = ? WHERE id = ?').run(Number(deposit_balance), id);
       return res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/admin/users/reset-password", async (req, res) => {
+    const { id, newPassword } = req.body;
+    try {
+      const { salt, hash } = hashPassword(newPassword);
+      const fullHash = `${salt}:${hash}`;
+      sqlite.prepare('UPDATE platform_users SET password_hash = ? WHERE id = ?').run(fullHash, id);
+      return res.json({ success: true, message: "Password updated successfully." });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/admin/users/freeze-wallet", async (req, res) => {
+    const { userId, isFrozen } = req.body;
+    try {
+      sqlite.prepare('UPDATE escrow_wallets SET is_frozen = ? WHERE user_id = ?').run(isFrozen ? 1 : 0, userId);
+      return res.json({ success: true, is_frozen: isFrozen });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/admin/users/fund-escrow", async (req, res) => {
+    const { userId, amount, action } = req.body;
+    try {
+      const wallet = sqlite.prepare('SELECT * FROM escrow_wallets WHERE user_id = ?').get(userId) as any;
+      if (!wallet) return res.status(404).json({ error: "Escrow wallet not found" });
+
+      let newBalance = wallet.available_balance;
+      const amountNum = Number(amount);
+      if (action === 'add') {
+         newBalance += amountNum;
+      } else if (action === 'subtract') {
+         newBalance -= amountNum;
+      } else {
+         newBalance = amountNum;
+      }
+
+      sqlite.prepare('UPDATE escrow_wallets SET available_balance = ? WHERE user_id = ?').run(newBalance, userId);
+
+      const transId = `tx_${Math.random().toString(36).substring(7)}`;
+      sqlite.prepare(`
+        INSERT INTO wallet_transactions (id, wallet_id, type, amount, description)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(transId, wallet.id, action === 'subtract' ? 'withdrawal' : 'deposit', amountNum, `Admin manual adjustment: ${action}`);
+
+      // Notify visitor
+      const notifId = `notif_${Math.random().toString(36).substring(7)}`;
+      const notifMsg = `Escrow Account Updated: Admin adjusted your escrow balance. New available balance: $${newBalance.toLocaleString()}`;
+      sqlite.prepare(`
+        INSERT INTO notification_logs (id, user_id, type, message, delivered)
+        VALUES (?, ?, 'escrow_adjustment', ?, 0)
+      `).run(notifId, userId, notifMsg);
+
+      broadcast({
+        type: "notification",
+        userId,
+        notification: {
+          id: notifId,
+          user_id: userId,
+          type: 'escrow_adjustment',
+          message: notifMsg,
+          created_at: new Date().toISOString()
+        }
+      });
+
+      return res.json({ success: true, available_balance: newBalance });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/admin/users/update-kyc", async (req, res) => {
+    const { id, status } = req.body;
+    try {
+      sqlite.prepare('UPDATE platform_users SET verification_status = ? WHERE id = ?').run(status, id);
+      return res.json({ success: true, verification_status: status });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/admin/users/delete", async (req, res) => {
+    const { id } = req.body;
+    try {
+      sqlite.prepare('DELETE FROM platform_users WHERE id = ?').run(id);
+      return res.json({ success: true, message: "User deleted successfully." });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/admin/users/resend-alert", async (req, res) => {
+    const { userId, title, message } = req.body;
+    try {
+      const notifId = `alert_${Math.random().toString(36).substring(7)}`;
+      sqlite.prepare(`
+        INSERT INTO notification_logs (id, user_id, type, message, delivered)
+        VALUES (?, ?, 'force_alert', ?, 0)
+      `).run(notifId, userId, `${title}: ${message}`);
+
+      broadcast({
+        type: "force_attention",
+        userId,
+        notification: {
+          id: notifId,
+          user_id: userId,
+          type: 'force_alert',
+          message: `${title}: ${message}`,
+          forceAttention: true,
+          created_at: new Date().toISOString()
+        }
+      });
+
+      return res.json({ success: true, message: "Alert successfully forces attention." });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/admin/escrow/regenerate-invoice", async (req, res) => {
+    try {
+      const { invoiceId, expires_in_mins } = req.body;
+      const invoice = sqlite.prepare('SELECT * FROM customer_invoices WHERE id = ?').get(invoiceId) as any;
+      if (!invoice) return res.status(404).json({ error: "Invoice not found" });
+
+      const newExpiresAt = new Date(Date.now() + (Number(expires_in_mins) || 60) * 60000).toISOString();
+      sqlite.prepare("UPDATE customer_invoices SET expires_at = ?, status = 'pending' WHERE id = ?").run(newExpiresAt, invoiceId);
+      
+      return res.json({ success: true, message: "Invoice regenerated with new deadline." });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -1182,6 +1400,28 @@ async function startServer() {
       timestamp: new Date().toISOString()
     };
 
+    try {
+      const id = `notif_${Math.random().toString(36).substring(7)}`;
+      sqlite.prepare(`
+        INSERT INTO notification_logs (id, user_id, type, message, delivered)
+        VALUES (?, ?, ?, ?, 0)
+      `).run(id, userId, type, `${title}: ${message}`);
+
+      broadcast({
+        type: "notification",
+        userId,
+        notification: {
+          id,
+          user_id: userId,
+          type,
+          message: `${title}: ${message}`,
+          created_at: new Date().toISOString()
+        }
+      });
+    } catch (sqliteErr: any) {
+      console.error("Failed to write to notification_logs:", sqliteErr.message);
+    }
+
     if (db) {
       try {
         await db.collection('notifications').add(notification);
@@ -1189,7 +1429,6 @@ async function startServer() {
         console.error("Firestore write error in admin/send-notification:", dbErr.message);
       }
     }
-    // Also log for system record
     console.log(`Notification sent to ${userId}: ${title}`);
     res.json({ success: true });
   });
