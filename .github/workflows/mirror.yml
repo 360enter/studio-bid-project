@@ -1,0 +1,21 @@
+name: Mirror Repo
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to target repo
+        run: |
+          git remote add target https://360enter:${{ secrets.TARGET_REPO_TOKEN }}@github.com/360enter/studio-bid-project.git
+          git push target main --force
