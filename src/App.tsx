@@ -103,7 +103,7 @@ function DashboardRouter() {
   try {
     const user = JSON.parse(userStr);
     if (user.role === 'admin') {
-      return <Navigate to="/apex-control-nexus" replace />;
+      return <Navigate to="/admin/dashboard" replace />;
     }
     return <CustomerDashboard />;
   } catch (e) {
@@ -134,10 +134,13 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/lot/:id" element={<LotDetails />} />
             <Route path="/dashboard" element={<DashboardRouter />} />
-            <Route path="/apex-control-nexus" element={
+            <Route path="/admin/dashboard" element={
               <ProtectedAdminRoute>
                 <Admin />
               </ProtectedAdminRoute>
+            } />
+            <Route path="/apex-control-nexus" element={
+              <Navigate to="/admin/dashboard" replace />
             } />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/sell" element={<Sell />} />

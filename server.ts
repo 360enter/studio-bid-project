@@ -199,6 +199,176 @@ async function startServer() {
     }
   }
 
+  function seedVehiclesIfEmpty() {
+    try {
+      const countResult = sqlite.prepare('SELECT COUNT(*) as count FROM vehicles').get() as any;
+      if (countResult && countResult.count > 0) {
+        console.log("[SEED] SQLite vehicles database already contains listings.");
+        return;
+      }
+      
+      console.log("[SEED] SQLite vehicles table is empty. Seeding highly polished premium bid.cars listings...");
+      
+      const seedLots = [
+        {
+          id: 'z06-vete',
+          vin: '1G1YC2D63H510255A',
+          lot_number: '48392104',
+          title: '2026 Corvette Z06 Carbon Edition',
+          make: 'Chevrolet',
+          model: 'Corvette Z06',
+          year: 2026,
+          mileage: 1820,
+          condition: 'Clean Title',
+          damage: 'Minor Scratches',
+          location: 'Miami North, FL',
+          auction_date: new Date(Date.now() + 1000 * 60 * 60 * 24 * 3).toISOString(), // 3 days
+          current_bid: 142400,
+          buy_now_price: 185000,
+          image_url: "https://images.unsplash.com/photo-1592198084033-aade902d1aae?q=80&w=2000&auto=format&fit=crop",
+          gallery_urls: [
+            "https://images.unsplash.com/photo-1592198084033-aade902d1aae?q=80&w=2000&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1511919884226-fd3cad34687c?q=80&w=2000&auto=format&fit=crop"
+          ]
+        },
+        {
+          id: 'rx350-lex',
+          vin: 'JTJZB2FA5F1092841',
+          lot_number: '39201948',
+          title: '2026 Lexus RX 350 Luxury AWD',
+          make: 'Lexus',
+          model: 'RX 350',
+          year: 2026,
+          mileage: 4350,
+          condition: 'Clean Title',
+          damage: 'None',
+          location: 'Copart Los Angeles, CA',
+          auction_date: new Date(Date.now() + 1000 * 60 * 60 * 12).toISOString(), // 12 hours
+          current_bid: 72800,
+          buy_now_price: 81000,
+          image_url: "https://images.unsplash.com/photo-1617469767053-d3b508a0d822?q=80&w=2000&auto=format&fit=crop",
+          gallery_urls: [
+            "https://images.unsplash.com/photo-1617469767053-d3b508a0d822?q=80&w=2000&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1549399542-7ee3d854814d?q=80&w=2000&auto=format&fit=crop"
+          ]
+        },
+        {
+          id: 'gt3-porsche',
+          vin: 'WP0AF2A93GS120485',
+          lot_number: '59203112',
+          title: '2026 Porsche 911 GT3 RS',
+          make: 'Porsche',
+          model: '911 GT3 RS',
+          year: 2026,
+          mileage: 480,
+          condition: 'Clean Title',
+          damage: 'None',
+          location: 'Copart Houston, TX',
+          auction_date: new Date(Date.now() + 1000 * 60 * 60 * 48).toISOString(), // 2 days
+          current_bid: 312500,
+          buy_now_price: 380000,
+          image_url: "https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=2000&auto=format&fit=crop",
+          gallery_urls: [
+            "https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=2000&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1580273916550-e323be2ae537?q=80&w=2000&auto=format&fit=crop"
+          ]
+        },
+        {
+          id: 'm3-comp',
+          vin: 'WBA5R1C09GK592048',
+          lot_number: '20481948',
+          title: '2025 BMW M3 Competition xDrive',
+          make: 'BMW',
+          model: 'M3 Competition',
+          year: 2025,
+          mileage: 8900,
+          condition: 'Salvage Title',
+          damage: 'Front End',
+          location: 'Miami North, FL',
+          auction_date: new Date(Date.now() + 1000 * 60 * 60 * 72).toISOString(), // 3 days
+          current_bid: 45000,
+          buy_now_price: 68000,
+          image_url: "https://images.unsplash.com/photo-1617814076367-b759c7d7e738?q=80&w=2000&auto=format&fit=crop",
+          gallery_urls: [
+            "https://images.unsplash.com/photo-1617814076367-b759c7d7e738?q=80&w=2000&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1555215695-3004980ad54e?q=80&w=2000&auto=format&fit=crop"
+          ]
+        }
+      ];
+
+      for (const lot of seedLots) {
+        sqlite.prepare(`
+          INSERT INTO vehicles (id, vin, lot_number, title, make, model, year, mileage, condition, damage, location, auction_date, current_bid, buy_now_price, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+        `).run(lot.id, lot.vin, lot.lot_number, lot.title, lot.make, lot.model, lot.year, lot.mileage, lot.condition, lot.damage, lot.location, lot.auction_date, lot.current_bid, lot.buy_now_price);
+        
+        let order = 0;
+        for (const url of lot.gallery_urls) {
+          sqlite.prepare(`
+            INSERT INTO vehicle_images (id, vehicle_id, image_url, sort_order)
+            VALUES (?, ?, ?, ?)
+          `).run(`img_${lot.id}_${order}`, lot.id, url, order);
+          order++;
+        }
+      }
+      console.log("[SEED] SQLite vehicles successfully seeded.");
+    } catch (err: any) {
+      console.error("[SEED] Error seeding vehicles in SQLite:", err.message);
+    }
+  }
+
+  function syncSqliteToLots() {
+    try {
+      const dbVehicles = sqlite.prepare('SELECT * FROM vehicles').all() as any[];
+      
+      for (const v of dbVehicles) {
+        const primaryImg = sqlite.prepare('SELECT image_url FROM vehicle_images WHERE vehicle_id = ? ORDER BY sort_order ASC LIMIT 1').get(v.id) as any;
+        const allImgs = sqlite.prepare('SELECT image_url FROM vehicle_images WHERE vehicle_id = ? ORDER BY sort_order ASC').all(v.id) as any[];
+        const gallery = allImgs.map(img => img.image_url);
+        
+        const lotBids = sqlite.prepare(`
+          SELECT b.*, u.fullname as userName 
+          FROM bids b 
+          JOIN platform_users u ON b.user_id = u.id 
+          WHERE b.vehicle_id = ? 
+          ORDER BY b.amount DESC
+        `).all(v.id) as any[];
+        
+        lots[v.id] = {
+          id: v.id,
+          vin: v.vin || '',
+          lot_number: v.lot_number || '',
+          name: v.title || `${v.year || ''} ${v.make || ''} ${v.model || ''}`,
+          year: v.year,
+          make: v.make,
+          model: v.model,
+          mileage: v.mileage,
+          condition: v.condition || 'Clean Title',
+          damage: v.damage || 'None',
+          location: v.location || 'Miami, FL',
+          currentBid: v.current_bid || 0,
+          floor: v.current_bid || 1000,
+          buy_now_price: v.buy_now_price,
+          ceiling: v.buy_now_price || (v.current_bid * 1.5),
+          velocity: 'High',
+          status: v.status || 'Active',
+          expiresAt: v.auction_date || new Date(Date.now() + 1000 * 60 * 60 * 24 * 3).toISOString(),
+          image: primaryImg?.image_url || v.image_url || 'https://images.unsplash.com/photo-1592198084033-aade902d1aae?q=80&w=2000&auto=format&fit=crop',
+          gallery: gallery.length > 0 ? gallery : [v.image_url || 'https://images.unsplash.com/photo-1592198084033-aade902d1aae?q=80&w=2000&auto=format&fit=crop'],
+          bidHistory: lotBids.map(b => ({
+            id: b.id,
+            user: b.userName || 'Anonymous',
+            amount: b.amount,
+            time: b.created_at
+          }))
+        };
+      }
+      console.log(`[LOTS] Synced ${dbVehicles.length} vehicles from SQLite database to memory.`);
+    } catch (err: any) {
+      console.error("[LOTS] Error syncing from SQLite to memory:", err.message);
+    }
+  }
+
   async function syncAndLoadAllState() {
     if (db) {
       try {
@@ -250,6 +420,13 @@ async function startServer() {
       }
     } else {
       loadBackup();
+    }
+
+    try {
+      seedVehiclesIfEmpty();
+      syncSqliteToLots();
+    } catch (e: any) {
+      console.error("Failed to seed or sync database listings during startup sync:", e.message);
     }
   }
 
@@ -1108,6 +1285,57 @@ async function startServer() {
            currentBid: rawPrice,
         };
 
+        // Sync with SQLite
+        try {
+          const dbSearch = sqlite.prepare('SELECT id FROM vehicles WHERE id = ?').get(targetId);
+          if (dbSearch) {
+            sqlite.prepare(`
+              UPDATE vehicles 
+              SET title = ?, current_bid = ?, buy_now_price = ?, status = ?, auction_date = ?, location = ?, mileage = ?, condition = ?, damage = ?, vin = ?, lot_number = ?
+              WHERE id = ?
+            `).run(
+              lots[targetId].name,
+              lots[targetId].currentBid,
+              lots[targetId].ceiling,
+              lots[targetId].status.toLowerCase(),
+              lots[targetId].expiresAt,
+              lots[targetId].location || 'Miami, FL',
+              Number(lots[targetId].mileage || 1000),
+              lots[targetId].condition || 'Clean Title',
+              lots[targetId].damage || 'None',
+              lots[targetId].vin,
+              lots[targetId].lot,
+              targetId
+            );
+          } else {
+            sqlite.prepare(`
+              INSERT INTO vehicles (id, title, current_bid, buy_now_price, status, auction_date, location, mileage, condition, damage, vin, lot_number)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              targetId,
+              lots[targetId].name,
+              lots[targetId].currentBid,
+              lots[targetId].ceiling,
+              lots[targetId].status.toLowerCase(),
+              lots[targetId].expiresAt,
+              lots[targetId].location || 'Miami, FL',
+              Number(lots[targetId].mileage || 1000),
+              lots[targetId].condition || 'Clean Title',
+              lots[targetId].damage || 'None',
+              lots[targetId].vin,
+              lots[targetId].lot
+            );
+          }
+
+          sqlite.prepare('DELETE FROM vehicle_images WHERE vehicle_id = ?').run(targetId);
+          sqlite.prepare(`
+            INSERT INTO vehicle_images (id, vehicle_id, image_url, sort_order)
+            VALUES (?, ?, ?, 0)
+          `).run(`img_${targetId}_0_${Date.now()}`, targetId, lots[targetId].image);
+        } catch (sqliteErr: any) {
+          console.error("Failed to sync uploaded CSV lot with SQLite:", sqliteErr.message);
+        }
+
         if (db) {
           try {
             await db.collection('lots').doc(targetId).set(lots[targetId], { merge: true });
@@ -1464,6 +1692,61 @@ async function startServer() {
     };
     lots[newLot.id] = newLot;
 
+    // Persist to SQLite
+    try {
+      const dbSearch = sqlite.prepare('SELECT id FROM vehicles WHERE id = ?').get(newLot.id);
+      if (dbSearch) {
+        sqlite.prepare(`
+          UPDATE vehicles 
+          SET title = ?, current_bid = ?, buy_now_price = ?, status = ?, auction_date = ?, location = ?, mileage = ?, condition = ?, damage = ?, vin = ?, lot_number = ?
+          WHERE id = ?
+        `).run(
+          newLot.name || newLot.title,
+          newLot.currentBid,
+          newLot.ceiling,
+          newLot.status.toLowerCase(),
+          newLot.expiresAt,
+          newLot.location || 'Miami, FL',
+          Number(newLot.mileage || 0),
+          newLot.condition || 'Clean Title',
+          newLot.damage || 'None',
+          newLot.vin || '',
+          newLot.lot_number || newLot.id,
+          newLot.id
+        );
+      } else {
+        sqlite.prepare(`
+          INSERT INTO vehicles (id, title, current_bid, buy_now_price, status, auction_date, location, mileage, condition, damage, vin, lot_number)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          newLot.id,
+          newLot.name || newLot.title,
+          newLot.currentBid,
+          newLot.ceiling,
+          newLot.status.toLowerCase(),
+          newLot.expiresAt,
+          newLot.location || 'Miami, FL',
+          Number(newLot.mileage || 0),
+          newLot.condition || 'Clean Title',
+          newLot.damage || 'None',
+          newLot.vin || '',
+          newLot.lot_number || newLot.id
+        );
+      }
+
+      sqlite.prepare('DELETE FROM vehicle_images WHERE vehicle_id = ?').run(newLot.id);
+      let order = 0;
+      for (const imgUrl of newLot.gallery) {
+        sqlite.prepare(`
+          INSERT INTO vehicle_images (id, vehicle_id, image_url, sort_order)
+          VALUES (?, ?, ?, ?)
+        `).run(`img_${newLot.id}_${order}_${Date.now()}`, newLot.id, imgUrl, order);
+        order++;
+      }
+    } catch (e: any) {
+      console.error("SQLite insert/update failure during admin lot creation:", e.message);
+    }
+
     if (db) {
       try {
         await db.collection("lots").doc(newLot.id).set(newLot, { merge: true });
@@ -1480,6 +1763,14 @@ async function startServer() {
   app.delete("/api/admin/lots/:id", async (req, res) => {
     const lotId = req.params.id;
     delete lots[lotId];
+
+    // Detach from SQLite
+    try {
+      sqlite.prepare('DELETE FROM vehicle_images WHERE vehicle_id = ?').run(lotId);
+      sqlite.prepare('DELETE FROM vehicles WHERE id = ?').run(lotId);
+    } catch (e: any) {
+      console.error("SQLite delete failure during admin lot deletion:", e.message);
+    }
 
     if (db) {
       try {
@@ -1527,6 +1818,43 @@ async function startServer() {
         if (status !== undefined) {
           lots[lotId].status = status;
         }
+      }
+
+      // Synchronize SQLite
+      try {
+        const item = lots[lotId];
+        sqlite.prepare(`
+          UPDATE vehicles 
+          SET title = ?, current_bid = ?, buy_now_price = ?, status = ?, auction_date = ?, location = ?, mileage = ?, condition = ?, damage = ?, vin = ?, lot_number = ?
+          WHERE id = ?
+        `).run(
+          item.name || item.title,
+          Number(item.currentBid),
+          Number(item.ceiling || item.buy_now_price || 0),
+          item.status.toLowerCase(),
+          item.expiresAt,
+          item.location || 'Miami, FL',
+          Number(item.mileage || 0),
+          item.condition || 'Clean Title',
+          item.damage || 'None',
+          item.vin || '',
+          item.lot_number || item.id,
+          item.id
+        );
+
+        if (item.gallery) {
+          sqlite.prepare('DELETE FROM vehicle_images WHERE vehicle_id = ?').run(item.id);
+          let order = 0;
+          for (const imgUrl of item.gallery) {
+            sqlite.prepare(`
+              INSERT INTO vehicle_images (id, vehicle_id, image_url, sort_order)
+              VALUES (?, ?, ?, ?)
+            `).run(`img_${item.id}_${order}_${Date.now()}`, item.id, imgUrl, order);
+            order++;
+          }
+        }
+      } catch (e: any) {
+        console.error("SQLite update failure during admin lot update:", e.message);
       }
 
       if (db) {

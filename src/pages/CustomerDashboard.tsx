@@ -34,13 +34,39 @@ export function CustomerDashboard() {
   }, []);
 
   const fetchData = async () => {
+    // Guarantees loading state clears even if there are network timeouts
+    const safetyTimeout = setTimeout(() => {
+      setLoading(false);
+    }, 4000);
+
     try {
       const userStr = localStorage.getItem('apex_user');
-      if (!userStr) return;
-      const u = JSON.parse(userStr);
+      if (!userStr) {
+        setLoading(false);
+        clearTimeout(safetyTimeout);
+        return;
+      }
+      
+      let u;
+      try {
+        u = JSON.parse(userStr);
+      } catch (err) {
+        console.error("Failed to parse apex_user in local storage:", err);
+        setLoading(false);
+        clearTimeout(safetyTimeout);
+        return;
+      }
+
+      if (!u || !u.id) {
+        setLoading(false);
+        clearTimeout(safetyTimeout);
+        return;
+      }
+
       setUser(u);
 
-      const res = await fetch(`/api/escrow/wallet/${u.id}`);
+      const walletUrl = `/api/escrow/wallet/${u.id}`;
+      const res = await fetch(walletUrl);
       if (res.ok) {
         const data = await res.json();
         setWallet(data.wallet);
@@ -66,8 +92,9 @@ export function CustomerDashboard() {
         }
       }
     } catch (e) {
-      console.error(e);
+      console.error("Dashboard data fetching failed:", e);
     } finally {
+      clearTimeout(safetyTimeout);
       setLoading(false);
     }
   };

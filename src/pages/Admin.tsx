@@ -108,12 +108,11 @@ export function Admin() {
   };
 
   const updateAppStatus = async (id: string, requestedStatus: string) => {
-    const finalStatus = requestedStatus === 'active' || requestedStatus === 'approved' ? 'active' : 'rejected';
-    console.log(`[APPROVAL] frontend app status update requested: ID ${id}, Status: ${finalStatus}`);
+    console.log(`[APPROVAL] frontend app status update requested: ID ${id}, Status: ${requestedStatus}`);
     await fetch("/api/admin/applications/vet", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, status: finalStatus })
+      body: JSON.stringify({ id, status: requestedStatus })
     });
     fetchDashboard();
   };

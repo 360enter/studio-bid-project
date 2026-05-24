@@ -385,7 +385,7 @@ export function LoginModal({ isOpen, onClose }: { isOpen: boolean, onClose: () =
          setTimeout(() => {
            onClose();
            if (data.user.role === 'admin') {
-             window.location.href = '/apex-control-nexus';
+             window.location.href = '/admin/dashboard';
            } else {
              window.location.href = '/dashboard';
            }
