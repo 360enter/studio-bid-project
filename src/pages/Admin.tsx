@@ -10,7 +10,7 @@ import { formatCurrency, cn } from "@/src/lib/utils";
 import { Link } from "react-router-dom";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
-export function Admin() {
+export function Admin({ initialTab = 'overview' }: { initialTab?: 'overview' | 'assets' | 'vetting' | 'escrow' }) {
   const [error, setError] = React.useState("");
   const [lots, setLots] = React.useState<any>(null);
   const [allocations, setAllocations] = React.useState<any[]>([]);
@@ -21,7 +21,11 @@ export function Admin() {
   const [invoiceAccounts, setInvoiceAccounts] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(false);
 
-  const [activeTab, setActiveTab] = React.useState<'overview' | 'assets' | 'vetting' | 'escrow'>('overview');
+  const [activeTab, setActiveTab] = React.useState<'overview' | 'assets' | 'vetting' | 'escrow'>(initialTab);
+  
+  React.useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
   
   const [userFilter, setUserFilter] = React.useState<'all' | 'pending' | 'active' | 'rejected' | 'suspended_banned'>('all');
   const [resetPasswordTarget, setResetPasswordTarget] = React.useState<any>(null);

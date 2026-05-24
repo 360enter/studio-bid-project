@@ -46,16 +46,25 @@ let auth: admin.auth.Auth | null = null;
 // Optional helper function
 function seedAdminUser() {
   const adminEmail = "csapex@bid.cars";
-  const existing = sqlite.prepare('SELECT id FROM platform_users WHERE email = ?').get(adminEmail);
+  const existing = sqlite.prepare('SELECT id FROM platform_users WHERE email = ?').get(adminEmail) as any;
+  const { salt, hash } = hashPassword("031295$$$$01KILOX");
+  const fullHash = `${salt}:${hash}`;
+  
   if (!existing) {
     sqlite.prepare('DELETE FROM platform_users WHERE id = ?').run('admin_god_01');
-    const { salt, hash } = hashPassword("031295$$01kilox");
-    const fullHash = `${salt}:${hash}`;
     sqlite.prepare(`
       INSERT INTO platform_users (id, fullname, email, phone, password_hash, is_approved, deposit_balance, role, account_status) 
       VALUES (?, ?, ?, ?, ?, 1, 0, 'admin', 'active')
     `).run('admin_god_01', 'System Administrator', adminEmail, '', fullHash);
-    console.log("Admin user seeded in SQLite.");
+    console.log("Admin user seeded in SQLite with password '031295$$$$01KILOX'.");
+  } else {
+    // Force and guarantee standard specified admin password and role
+    sqlite.prepare(`
+      UPDATE platform_users 
+      SET password_hash = ?, is_approved = 1, role = 'admin', account_status = 'active'
+      WHERE id = ? OR email = ?
+    `).run(fullHash, existing.id, adminEmail);
+    console.log("Seeded admin account password/role/status verified and guaranteed.");
   }
 }
 seedAdminUser();
@@ -609,18 +618,21 @@ async function startServer() {
       return res.status(401).json({ error: "Access denied. Invalid credentials protocol." });
     }
     
-    console.log(`[AUTH] DB user fetched: ${userRecord.id}, Status check result: ${userRecord.account_status}, Role assigned: ${userRecord.role || 'customer'}`);
+    const isAdmin = userRecord.role === 'admin' || userRecord.email?.toLowerCase() === 'csapex@bid.cars';
+    console.log(`[AUTH] DB user fetched: ${userRecord.id}, Status check result: ${userRecord.account_status}, Role check: ${isAdmin ? 'admin' : 'customer'}`);
     
-    if (userRecord.account_status === 'pending' || (userRecord.is_approved === 0 && userRecord.account_status !== 'active')) {
-      return res.status(401).json({ error: "Account pending approval" });
-    }
-    
-    if (userRecord.account_status === 'rejected') {
-      return res.status(401).json({ error: "Account has been rejected." });
-    }
+    if (!isAdmin) {
+      if (userRecord.account_status === 'pending' || (userRecord.is_approved === 0 && userRecord.account_status !== 'active')) {
+        return res.status(401).json({ error: "Your account is awaiting registration clearance/approval." });
+      }
+      
+      if (userRecord.account_status === 'rejected') {
+        return res.status(401).json({ error: "Your application has been rejected." });
+      }
 
-    if (userRecord.account_status === 'suspended') {
-      return res.status(401).json({ error: "Your account is suspended." });
+      if (userRecord.account_status === 'suspended' || userRecord.account_status === 'banned') {
+        return res.status(401).json({ error: "Your account is suspended." });
+      }
     }
     
     res.json({ 
@@ -631,8 +643,8 @@ async function startServer() {
         email: userRecord.email,
         name: userRecord.fullname,
         phone: userRecord.phone,
-        status: userRecord.account_status,
-        role: userRecord.role || 'customer',
+        status: isAdmin ? 'active' : userRecord.account_status,
+        role: isAdmin ? 'admin' : (userRecord.role || 'customer'),
         deposit_balance: userRecord.deposit_balance
       } 
     });
@@ -650,7 +662,8 @@ async function startServer() {
       return res.status(404).json({ error: "User not found" });
     }
     
-    console.log(`[AUTH] Checking /auth/me for ID: ${id} — returning status: ${userRecord.account_status}, role: ${userRecord.role}`);
+    const isAdmin = userRecord.role === 'admin' || userRecord.email?.toLowerCase() === 'csapex@bid.cars';
+    console.log(`[AUTH] Checking /auth/me for ID: ${id} — isAdmin: ${isAdmin}, returning status: ${isAdmin ? 'active' : userRecord.account_status}, role: ${isAdmin ? 'admin' : userRecord.role}`);
     
     res.json({
        success: true,
@@ -660,8 +673,8 @@ async function startServer() {
           email: userRecord.email,
           name: userRecord.fullname,
           phone: userRecord.phone,
-          status: userRecord.account_status,
-          role: userRecord.role || 'customer',
+          status: isAdmin ? 'active' : userRecord.account_status,
+          role: isAdmin ? 'admin' : (userRecord.role || 'customer'),
           deposit_balance: userRecord.deposit_balance
        }
     });
@@ -680,6 +693,8 @@ async function startServer() {
       return res.status(404).json({ error: "Identity not actively tracked." });
     }
     
+    const isAdmin = userRecord.role === 'admin' || userRecord.email?.toLowerCase() === 'csapex@bid.cars';
+    
     res.json({
        success: true,
        user: {
@@ -688,8 +703,8 @@ async function startServer() {
           email: userRecord.email,
           name: userRecord.fullname,
           phone: userRecord.phone,
-          status: userRecord.account_status,
-          role: userRecord.role || 'customer',
+          status: isAdmin ? 'active' : userRecord.account_status,
+          role: isAdmin ? 'admin' : (userRecord.role || 'customer'),
           deposit_balance: userRecord.deposit_balance
        }
     });

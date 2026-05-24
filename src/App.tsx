@@ -36,38 +36,48 @@ function AuthValidator({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        // 3 seconds maximum timeout fallback protection
+        // Limit validation loading to a 1000ms max timeout fallbacks
         const controller = new AbortController();
         const timeoutId = setTimeout(() => {
           controller.abort();
-        }, 3000);
+          console.log("[ROUTING] Session validation request hit timeout. Terminating loading state.");
+          if (isActive) setIsValidating(false);
+        }, 1000);
 
-        const res = await fetch("/api/auth/me", {
-           method: "POST",
-           headers: { "Content-Type": "application/json" },
-           body: JSON.stringify({ id: user.id }),
-           signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        
-        if (res.ok) {
-           const data = await res.json();
-           if (data.success && data.user) {
-              const ustatus = (data.user.status || '').toLowerCase();
-              console.log(`[ROUTING] Route access validated for ID: ${data.user.id}, Status: ${ustatus}`);
-              
-              // Standardize status for the local state representation
-              localStorage.setItem('apex_user', JSON.stringify({ ...data.user, status: data.user.status }));
-              window.dispatchEvent(new Event('storage'));
-           }
-        } else {
-           console.log(`[ROUTING] Invalid status or credentials, session cleared.`);
-           localStorage.removeItem('apex_user');
-           window.dispatchEvent(new Event('storage'));
-           navigate('/');
+        try {
+          const res = await fetch("/api/auth/me", {
+             method: "POST",
+             headers: { "Content-Type": "application/json" },
+             body: JSON.stringify({ id: user.id }),
+             signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+          
+          if (res.ok) {
+             const data = await res.json();
+             if (data.success && data.user) {
+                const ustatus = (data.user.status || '').toLowerCase();
+                console.log(`[ROUTING] Route access validated for ID: ${data.user.id}, Status: ${ustatus}, Role: ${data.user.role}`);
+                
+                // Standardize status for local state representations
+                localStorage.setItem('apex_user', JSON.stringify({ ...data.user, status: data.user.status }));
+                window.dispatchEvent(new Event('storage'));
+             }
+          } else {
+             console.log(`[ROUTING] Invalid status or credentials, session cleared.`);
+             localStorage.removeItem('apex_user');
+             window.dispatchEvent(new Event('storage'));
+             navigate('/');
+          }
+        } catch (fetchErr: any) {
+          if (fetchErr.name === 'AbortError') {
+             console.log("[ROUTING] Validation aborted on timeout - fallback to client storage state.");
+          } else {
+             console.error("[ROUTING] Session validation network query failed:", fetchErr);
+          }
         }
       } catch (err) {
-        console.error("Session validation failed/aborted during check:", err);
+        console.error("Session validation failed:", err);
       } finally {
         if (isActive) {
           setIsValidating(false);
@@ -136,7 +146,32 @@ export default function App() {
             <Route path="/dashboard" element={<DashboardRouter />} />
             <Route path="/admin/dashboard" element={
               <ProtectedAdminRoute>
-                <Admin />
+                <Admin initialTab="overview" />
+              </ProtectedAdminRoute>
+            } />
+            <Route path="/admin/users" element={
+              <ProtectedAdminRoute>
+                <Admin initialTab="vetting" />
+              </ProtectedAdminRoute>
+            } />
+            <Route path="/admin/invoices" element={
+              <ProtectedAdminRoute>
+                <Admin initialTab="escrow" />
+              </ProtectedAdminRoute>
+            } />
+            <Route path="/admin/notifications" element={
+              <ProtectedAdminRoute>
+                <Admin initialTab="overview" />
+              </ProtectedAdminRoute>
+            } />
+            <Route path="/admin/settings" element={
+              <ProtectedAdminRoute>
+                <Admin initialTab="overview" />
+              </ProtectedAdminRoute>
+            } />
+            <Route path="/admin/wallets" element={
+              <ProtectedAdminRoute>
+                <Admin initialTab="escrow" />
               </ProtectedAdminRoute>
             } />
             <Route path="/apex-control-nexus" element={
