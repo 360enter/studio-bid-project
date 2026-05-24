@@ -85,6 +85,25 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
+      {/* Configuration Failsafe/Missing Environment Alert Banner */}
+      {(() => {
+        const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+        const isCloudRun = typeof window !== "undefined" && window.location.hostname.includes(".run.app");
+        const isConfigMissing = !isLocal && !isCloudRun && !import.meta.env.VITE_API_URL;
+        
+        if (isConfigMissing) {
+          return (
+             <div className="bg-amber-600 dark:bg-amber-800 text-white text-xs py-3 px-6 text-center font-semibold tracking-wide shadow-md flex items-center justify-center gap-2 border-b border-amber-500 relative z-[200]">
+                <span>🔧</span>
+                <span>
+                   <strong>Deployment Configuration Required:</strong> The client-side deployment is live, but the backend API URL (<code>VITE_API_URL</code>) has not been set. Please configure this environmental variable in your Cloudflare Pages dashboard pointing to your active Google Cloud Run service URL to enable secure database credentials, real-time bidding, and portal features.
+                </span>
+             </div>
+          );
+        }
+        return null;
+      })()}
+
       {/* Top utility bar */}
       <div className="bg-slate-900 text-slate-300 text-xs py-2 hidden md:block border-b border-slate-800">
          <div className="max-w-[1600px] mx-auto px-6 flex justify-between items-center">
@@ -400,8 +419,16 @@ export function LoginModal({ isOpen, onClose }: { isOpen: boolean, onClose: () =
          }
          setStatusText("");
       }
-    } catch {
-       setError("System Network Fault");
+    } catch (err: any) {
+       const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+       const isCloudRun = typeof window !== "undefined" && window.location.hostname.includes(".run.app");
+       const isConfigMissing = !isLocal && !isCloudRun && !import.meta.env.VITE_API_URL;
+       
+       if (isConfigMissing) {
+         setError("Authentication failed: VITE_API_URL has not been set for this production static layout. Please configure it in your Cloudflare dashboard.");
+       } else {
+         setError("Network error: Unable to contact the security servers. Please verify server status.");
+       }
        setStatusText("");
     } finally {
        setLoading(false);
@@ -499,8 +526,16 @@ export function RegisterModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
       } else {
          setError(data.error || "Registration failed");
       }
-    } catch (err) {
-       setError("System Network Fault. Please try again.");
+    } catch (err: any) {
+       const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+       const isCloudRun = typeof window !== "undefined" && window.location.hostname.includes(".run.app");
+       const isConfigMissing = !isLocal && !isCloudRun && !import.meta.env.VITE_API_URL;
+       
+       if (isConfigMissing) {
+         setError("Registration failed: VITE_API_URL has not been set for this production static layout. Please configure it in your Cloudflare dashboard.");
+       } else {
+         setError("Network error: Unable to contact security servers. Please try again later.");
+       }
     } finally {
        setLoading(false);
     }
